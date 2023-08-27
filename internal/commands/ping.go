@@ -61,7 +61,7 @@ func (c *PingCommand) HandleInteraction(s *discordgo.Session, i *discordgo.Inter
 	componentCollector.Start(func(ci *discordgo.InteractionCreate) bool {
 		return ci.Message.ID == msg.ID &&
 			ci.MessageComponentData().CustomID == "ping" &&
-			ci.Member.User.ID == i.Member.User.ID
+			discordutil.IsSameInteractionUser(ci, i)
 	})
 
 	componentInteractions := componentCollector.Channel()
