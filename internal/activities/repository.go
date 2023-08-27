@@ -34,14 +34,25 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 }
 
 func (r *ActivityRepository) FindByUserID(ctx context.Context, userID string, limit, offset int) ([]*Activity, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, name, primary_type, media_type, duration, date, meta
+	query := `
+		SELECT activities.id,
+			   user_id,
+			   name,
+			   primary_type,
+			   media_type,
+			   duration, date at time zone COALESCE(u.timezone, 'UTC'),
+			   meta
 		FROM activities
-		WHERE user_id = $1 AND deleted_at IS NULL
+		INNER JOIN users u ON activities.user_id = u.id
+		WHERE user_id = $1
+		AND deleted_at IS NULL
 		ORDER BY date DESC
 		LIMIT $2
 		OFFSET $3
-	`, userID, limit, offset)
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, limit, offset)
+
 	if err != nil {
 		return nil, err
 	}

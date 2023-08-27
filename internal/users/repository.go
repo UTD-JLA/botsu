@@ -65,6 +65,16 @@ func (r *UserRepository) FindOrCreate(ctx context.Context, id string) (*User, er
 	return user, nil
 }
 
+func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone string) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO users (id, timezone)
+		VALUES ($1, $2)
+		ON CONFLICT (id) DO UPDATE SET timezone = $2;`,
+		userId, timezone)
+
+	return err
+}
+
 func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId string) error {
 	_, err := r.db.Exec(ctx,
 		`INSERT INTO users (id, active_guilds)

@@ -33,7 +33,7 @@ func (m ActivityMeta) Value() (driver.Value, error) {
 }
 
 func (m *ActivityMeta) Scan(src interface{}) error {
-	return json.Unmarshal(src.([]byte), m)
+	return json.Unmarshal([]byte(src.(string)), m)
 }
 
 type Activity struct {

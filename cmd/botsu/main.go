@@ -47,6 +47,7 @@ func main() {
 
 	bot.AddCommand(commands.PingCommandData, commands.NewPingCommand())
 	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo))
+	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
 
 	log.Println("Logging in")
 
