@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/pelletier/go-toml/v2"
@@ -21,7 +22,14 @@ type DatabaseConfig struct {
 }
 
 func (c *DatabaseConfig) ConnectionString() string {
-	return "postgres://" + c.User + ":" + c.Password + "@" + c.Host + ":" + fmt.Sprintf("%d", c.Port) + "/" + c.Database
+	connectionUrl := url.URL{
+		Scheme: "postgres",
+		Host:   c.Host + fmt.Sprintf(":%d", c.Port),
+		User:   url.UserPassword(c.User, c.Password),
+		Path:   c.Database,
+	}
+
+	return connectionUrl.String()
 }
 
 func NewConfig() *Config {
