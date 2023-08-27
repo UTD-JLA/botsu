@@ -13,6 +13,14 @@ import (
 var HistoryCommandData = &discordgo.ApplicationCommand{
 	Name:        "history",
 	Description: "View your activity history",
+	Options: []*discordgo.ApplicationCommandOption{
+		{
+			Name:        "user",
+			Type:        discordgo.ApplicationCommandOptionUser,
+			Description: "The user to view the history of. Defaults to yourself.",
+			Required:    false,
+		},
+	},
 }
 
 type HistoryCommand struct {
@@ -29,7 +37,12 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 	})
 
 	offset := 0
-	user := discordutil.GetInteractionUser(i)
+	user := discordutil.GetUserOption(i.ApplicationCommandData().Options, "user", s)
+
+	if user == nil {
+		user = discordutil.GetInteractionUser(i)
+	}
+
 	page, err := c.r.PageByUserID(context.Background(), user.ID, 6, offset)
 
 	if err != nil {
@@ -38,8 +51,8 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Activity History").
-		SetDescription("Here are your last 10 activities!").
 		SetColor(discordutil.ColorPrimary).
+		SetAuthor(user.Username, user.AvatarURL("256"), "").
 		SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
 
 	for _, activity := range page.Activities {
@@ -48,14 +61,14 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 
 	nextButton := discordgo.Button{
 		Label:    "Next",
-		Style:    discordgo.SuccessButton,
+		Style:    discordgo.PrimaryButton,
 		CustomID: "history_next",
 		Disabled: page.Page == page.PageCount,
 	}
 
 	previousButton := discordgo.Button{
 		Label:    "Previous",
-		Style:    discordgo.SuccessButton,
+		Style:    discordgo.SecondaryButton,
 		CustomID: "history_previous",
 		Disabled: true,
 	}
@@ -99,6 +112,12 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 				embed.SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
 				embed.ClearFields()
 
+				if page.Page%2 == 0 {
+					embed.SetColor(discordutil.ColorSecondary)
+				} else {
+					embed.SetColor(discordutil.ColorPrimary)
+				}
+
 				for _, activity := range page.Activities {
 					embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
 				}
@@ -130,6 +149,12 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 
 				if err != nil {
 					return err
+				}
+
+				if page.Page%2 == 0 {
+					embed.SetColor(discordutil.ColorSecondary)
+				} else {
+					embed.SetColor(discordutil.ColorPrimary)
 				}
 
 				embed.SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
