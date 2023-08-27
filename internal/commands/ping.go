@@ -28,7 +28,7 @@ func (c *PingCommand) HandleInteraction(s *discordgo.Session, i *discordgo.Inter
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Pong!",
+			Content: "Pong! " + s.HeartbeatLatency().String(),
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
