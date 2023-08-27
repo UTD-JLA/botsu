@@ -19,6 +19,10 @@ import (
 	"github.com/kkdai/youtube/v2"
 )
 
+func init() {
+	youtube.DefaultClient = youtube.WebClient
+}
+
 var manualCommandOptions = []*discordgo.ApplicationCommandOption{
 	{
 		Name:        "name",
@@ -135,12 +139,14 @@ var LogCommandData = &discordgo.ApplicationCommand{
 type LogCommand struct {
 	activityRepo *activities.ActivityRepository
 	userRepo     *users.UserRepository
+	ytClient     youtube.Client
 }
 
 func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository) *LogCommand {
 	return &LogCommand{
 		activityRepo: ar,
 		userRepo:     ur,
+		ytClient:     youtube.Client{},
 	}
 }
 
@@ -211,8 +217,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	activity := activities.NewActivity()
 	url := discordutil.GetRequiredStringOption(args, "url")
 
-	client := youtube.Client{}
-	video, err := client.GetVideo(url)
+	video, err := c.ytClient.GetVideo(url)
 
 	if err != nil {
 		return err
@@ -227,6 +232,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	activity.Meta["video_duration"] = video.Duration
 	activity.Meta["channel_id"] = video.ChannelID
 	activity.Meta["channel_name"] = video.Author
+	activity.Meta["channel_handle"] = video.ChannelHandle
 	activity.Meta["video_thumbnails"] = make([]struct {
 		Url    string `json:"url"`
 		Width  uint   `json:"width"`
@@ -234,6 +240,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	}, len(video.Thumbnails))
 	activity.Meta["related_channels"] = findRelatedChannels(video)
 	activity.Meta["related_videos"] = findRelatedVideos(video)
+	activity.Meta["video_publish_date"] = video.PublishDate
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
@@ -389,15 +396,10 @@ func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.Interaction
 func findRelatedChannels(video *youtube.Video) []string {
 	channelIdRegex := regexp.MustCompile(`@([a-zA-Z0-9_-]+)`)
 	relatedChannels := make([]string, 0)
-
-	for _, descriptionLine := range strings.Split(video.Description, "\n") {
-		matches := channelIdRegex.FindStringSubmatch(descriptionLine)
-
-		if len(matches) > 1 {
-			relatedChannels = append(relatedChannels, matches[1])
-		}
+	matches := channelIdRegex.FindAllStringSubmatch(video.Description, -1)
+	for _, match := range matches {
+		relatedChannels = append(relatedChannels, "@"+match[1])
 	}
-
 	return relatedChannels
 }
 
@@ -405,15 +407,10 @@ func findRelatedVideos(video *youtube.Video) []string {
 	// video is either /watch?v=ID or /live/ID (for live streams)
 	videoIdRegex := regexp.MustCompile(`https://www.youtube.com/(?:watch\?v=|live/)([a-zA-Z0-9_-]+)`)
 	relatedVideos := make([]string, 0)
-
-	for _, descriptionLine := range strings.Split(video.Description, "\n") {
-		matches := videoIdRegex.FindStringSubmatch(descriptionLine)
-
-		if len(matches) > 1 {
-			relatedVideos = append(relatedVideos, matches[1])
-		}
+	matches := videoIdRegex.FindAllStringSubmatch(video.Description, -1)
+	for _, match := range matches {
+		relatedVideos = append(relatedVideos, match[1])
 	}
-
 	return relatedVideos
 }
 
