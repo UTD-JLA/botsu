@@ -228,6 +228,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVideo)
 	activity.UserID = user.ID
 	activity.Meta["url"] = url
+	activity.Meta["platform"] = "youtube"
 	activity.Meta["video_id"] = video.ID
 	activity.Meta["video_duration"] = video.Duration
 	activity.Meta["channel_id"] = video.ChannelID
