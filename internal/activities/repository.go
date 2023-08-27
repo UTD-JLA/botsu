@@ -33,7 +33,13 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 	return err
 }
 
-func (r *ActivityRepository) FindByUserID(ctx context.Context, userID string, limit, offset int) ([]*Activity, error) {
+type UserActivityPage struct {
+	Activities []*Activity
+	PageCount  int
+	Page       int
+}
+
+func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, limit, offset int) (*UserActivityPage, error) {
 	query := `
 		SELECT activities.id,
 			   user_id,
@@ -41,7 +47,9 @@ func (r *ActivityRepository) FindByUserID(ctx context.Context, userID string, li
 			   primary_type,
 			   media_type,
 			   duration, date at time zone COALESCE(u.timezone, 'UTC'),
-			   meta
+			   meta,
+			   CEIL(COUNT(*) OVER() / $2::float) AS page_count,
+			   CEIL($3::float / $2::float) + 1 AS page
 		FROM activities
 		INNER JOIN users u ON activities.user_id = u.id
 		WHERE user_id = $1
@@ -58,7 +66,10 @@ func (r *ActivityRepository) FindByUserID(ctx context.Context, userID string, li
 	}
 	defer rows.Close()
 
-	var activities []*Activity
+	page := &UserActivityPage{
+		Activities: make([]*Activity, 0),
+	}
+
 	for rows.Next() {
 		var activity Activity
 		if err := rows.Scan(
@@ -70,12 +81,14 @@ func (r *ActivityRepository) FindByUserID(ctx context.Context, userID string, li
 			&activity.Duration,
 			&activity.Date,
 			&activity.Meta,
+			&page.PageCount,
+			&page.Page,
 		); err != nil {
 			return nil, err
 		}
-		activities = append(activities, &activity)
+		page.Activities = append(page.Activities, &activity)
 	}
-	return activities, nil
+	return page, nil
 }
 
 func (r *ActivityRepository) DeleteById(ctx context.Context, id uint64) error {

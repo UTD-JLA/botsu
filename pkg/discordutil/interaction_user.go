@@ -10,3 +10,7 @@ func GetInteractionUser(i *discordgo.InteractionCreate) *discordgo.User {
 	}
 	return i.User
 }
+
+func IsSameInteractionUser(i1, i2 *discordgo.InteractionCreate) bool {
+	return GetInteractionUser(i1).ID == GetInteractionUser(i2).ID
+}

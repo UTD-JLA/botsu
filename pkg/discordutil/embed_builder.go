@@ -87,6 +87,11 @@ func (b *EmbedBuilder) AddField(name, value string, inline bool) *EmbedBuilder {
 	return b
 }
 
+func (b *EmbedBuilder) ClearFields() *EmbedBuilder {
+	b.embed.Fields = make([]*discordgo.MessageEmbedField, 0)
+	return b
+}
+
 func (b *EmbedBuilder) SetTimestamp(t time.Time) *EmbedBuilder {
 	b.embed.Timestamp = t.Format(time.RFC3339)
 	return b
