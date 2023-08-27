@@ -404,8 +404,8 @@ func findRelatedChannels(video *youtube.Video) []string {
 }
 
 func findRelatedVideos(video *youtube.Video) []string {
-	// video is either /watch?v=ID or /live/ID (for live streams)
-	videoIdRegex := regexp.MustCompile(`https://www.youtube.com/(?:watch\?v=|live/)([a-zA-Z0-9_-]+)`)
+	// video is either youtube.com/watch?v=ID or youtube.com/live/ID (for live streams) or youtu.be/ID
+	videoIdRegex := regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtube\.com/live/|youtu\.be/)([a-zA-Z0-9_-]+)`)
 	relatedVideos := make([]string, 0)
 	matches := videoIdRegex.FindAllStringSubmatch(video.Description, -1)
 	for _, match := range matches {
