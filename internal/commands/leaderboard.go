@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
+	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
@@ -21,16 +23,21 @@ var LeaderboardCommandData = &discordgo.ApplicationCommand{
 
 type LeaderboardCommand struct {
 	r *activities.ActivityRepository
+	u *users.UserRepository
 }
 
-func NewLeaderboardCommand(r *activities.ActivityRepository) *LeaderboardCommand {
-	return &LeaderboardCommand{r: r}
+func NewLeaderboardCommand(r *activities.ActivityRepository, u *users.UserRepository) *LeaderboardCommand {
+	return &LeaderboardCommand{r: r, u: u}
 }
 
 func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 	})
+
+	if err != nil {
+		return err
+	}
 
 	if i.GuildID == "" {
 		return errors.New("this command can only be used in a guild")
@@ -65,27 +72,19 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 	if len(missingMembers) > 0 {
 		nonce, err := discordutil.NewNonce()
 
-		fmt.Printf("Requesting chunk %s\n", nonce)
-		//len
-		fmt.Printf("Requesting chunk %d\n", len(nonce))
-
 		if err != nil {
 			return err
 		}
 
 		memberChunk := make(chan []*discordgo.Member, 1)
 
-		removeFunc := s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildMembersChunk) {
-			fmt.Printf("Received chunk %s\n", e.Nonce)
-
-			if e.Nonce != nonce {
-				return
+		removeHandler := s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildMembersChunk) {
+			if e.Nonce == nonce {
+				memberChunk <- e.Members
 			}
-
-			memberChunk <- e.Members
 		})
 
-		defer removeFunc()
+		defer removeHandler()
 
 		err = s.RequestGuildMembersList(i.GuildID, missingMembers, 0, nonce, false)
 
@@ -107,21 +106,34 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 		SetTitle("Leaderboard").
 		SetColor(discordutil.ColorPrimary)
 
-	for _, m := range topMembers {
+	deadMembers := make([]string, 0, len(topMembers))
+
+	for x, m := range topMembers {
 		member, ok := foundMembers[m.UserID]
 		displayName := m.UserID
 		if ok && member.Nick != "" {
 			displayName = member.Nick
 		} else if ok && member.User != nil {
 			displayName = member.User.Username
+		} else if !ok {
+			deadMembers = append(deadMembers, m.UserID)
 		}
 
-		embed.AddField(displayName, m.TotalDuration.String(), false)
+		embed.AddField(fmt.Sprintf("%d. %s", x+1, displayName), m.TotalDuration.String(), false)
 	}
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 	})
+
+	go func() {
+		for _, m := range deadMembers {
+			err := c.u.RemoveActiveGuild(context.Background(), m, i.GuildID)
+			if err != nil {
+				log.Printf("Error removing dead member %s: %v\n", m, err)
+			}
+		}
+	}()
 
 	return err
 }

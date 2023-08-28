@@ -88,8 +88,8 @@ func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId 
 func (r *UserRepository) RemoveActiveGuild(ctx context.Context, userId, guildId string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE users
-		SET active_guilds = array_remove(users.active_guilds, $2)
-		WHERE id = $1;`,
+		SET active_guilds = array_remove(users.active_guilds, $1)
+		WHERE id = $2;`,
 		guildId, userId)
 
 	return err
