@@ -137,13 +137,13 @@ func (c *ConfigCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.In
 
 	switch focuedOption.Name {
 	case "timezone":
+		const maxResults = 25
 		timezone := focuedOption.StringValue()
-
-		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, maxResults)
 
 		if timezone == "" {
 			for i, tz := range validTimezones {
-				if i >= 25 {
+				if i >= maxResults {
 					break
 				}
 
@@ -165,7 +165,7 @@ func (c *ConfigCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.In
 					})
 				}
 
-				if len(results) >= 25 {
+				if len(results) >= maxResults {
 					break
 				}
 			}
