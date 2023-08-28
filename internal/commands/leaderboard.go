@@ -117,6 +117,13 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 			displayName = member.User.Username
 		} else if !ok {
 			deadMembers = append(deadMembers, m.UserID)
+			usr, err := s.User(m.UserID)
+			if err != nil {
+				log.Printf("Error getting user %s: %v\n", m.UserID, err)
+				continue
+			}
+
+			displayName = usr.Username
 		}
 
 		embed.AddField(fmt.Sprintf("%d. %s", x+1, displayName), m.TotalDuration.String(), false)
