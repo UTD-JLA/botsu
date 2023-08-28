@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -31,12 +32,6 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 		Scan(&activity.ID)
 
 	return err
-}
-
-type UserActivityPage struct {
-	Activities []*Activity
-	PageCount  int
-	Page       int
 }
 
 func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, limit, offset int) (*UserActivityPage, error) {
@@ -98,4 +93,40 @@ func (r *ActivityRepository) DeleteById(ctx context.Context, id uint64) error {
 		WHERE id = $1
 	`, id)
 	return err
+}
+
+func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, limit int, start, end time.Time) ([]*MemberStats, error) {
+	members := make([]*MemberStats, 0)
+
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, SUM(a.duration) AS total_duration
+		FROM users u
+		INNER JOIN activities a ON u.id = a.user_id
+		WHERE $1 = ANY(u.active_guilds)
+		AND a.deleted_at IS NULL
+		AND a.date >= $2
+		AND a.date <= $3
+		GROUP BY u.id
+		ORDER BY total_duration DESC
+		LIMIT $4
+	`, guildId, start, end, limit)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var member MemberStats
+		if err := rows.Scan(
+			&member.UserID,
+			&member.TotalDuration,
+		); err != nil {
+			return nil, err
+		}
+		members = append(members, &member)
+	}
+
+	return members, nil
 }
