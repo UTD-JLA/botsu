@@ -6,6 +6,16 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+func GetFocusedOption(options []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.ApplicationCommandInteractionDataOption {
+	for _, option := range options {
+		if option.Focused {
+			return option
+		}
+	}
+
+	return nil
+}
+
 func GetOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *discordgo.ApplicationCommandInteractionDataOption {
 	for _, option := range options {
 		if option.Name == key {
