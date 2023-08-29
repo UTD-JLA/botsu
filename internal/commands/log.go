@@ -321,12 +321,10 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Invalid date provided.",
-			},
+		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			Content: "Invalid date provided.",
 		})
+		return err
 	}
 
 	activity.Date = date
@@ -398,12 +396,10 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Invalid date provided.",
-			},
+		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			Content: "Invalid date provided.",
 		})
+		return err
 	}
 
 	activity.Date = date
