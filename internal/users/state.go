@@ -3,13 +3,13 @@ package users
 import (
 	"context"
 	"log"
+	"sync"
 )
 
-// var NotFoundErr = errors.New("user not found")
-
 type UserState struct {
-	users map[string]*User
-	repo  *UserRepository
+	usersMu sync.RWMutex
+	users   map[string]*User
+	repo    *UserRepository
 }
 
 func NewUserState(r *UserRepository) *UserState {
@@ -17,6 +17,9 @@ func NewUserState(r *UserRepository) *UserState {
 }
 
 func (s *UserState) GetUser(id string) (*User, error) {
+	s.usersMu.RLock()
+	defer s.usersMu.RUnlock()
+
 	user, ok := s.users[id]
 
 	if ok {
@@ -34,6 +37,9 @@ func (s *UserState) GetUser(id string) (*User, error) {
 }
 
 func (s *UserState) UpdateUser(user *User) error {
+	s.usersMu.Lock()
+	defer s.usersMu.Unlock()
+
 	err := s.repo.Update(context.Background(), user)
 
 	if err != nil {
