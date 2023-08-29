@@ -338,15 +338,17 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Activity logged!").
 		AddField("Title", activity.Name, false).
-		AddField("Characters Read", fmt.Sprintf("%d", activity.Meta["characters"]), false).
 		AddField("Duration", activity.Duration.String(), false).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
 		SetTimestamp(activity.Date).
-		SetColor(discordutil.ColorSuccess).
-		Build()
+		SetColor(discordutil.ColorSuccess)
+
+	if charCount != 0 {
+		embed.AddField("Characters Read", fmt.Sprintf("%d", activity.Meta["characters"]), false)
+	}
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed},
+		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 	})
 
 	return err
