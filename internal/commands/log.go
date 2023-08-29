@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -166,6 +167,39 @@ var vnCommandOptions = []*discordgo.ApplicationCommandOption{
 	},
 }
 
+var bookCommandOptions = []*discordgo.ApplicationCommandOption{
+	{
+		Name:        "name",
+		Type:        discordgo.ApplicationCommandOptionString,
+		Description: "Title/name of the book read",
+		Required:    true,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "pages",
+		Type:        discordgo.ApplicationCommandOptionInteger,
+		Description: "Number of pages read (or 0 if unknown)",
+		MinValue:    ref.New(0.0),
+		Required:    true,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "duration",
+		Type:        discordgo.ApplicationCommandOptionInteger,
+		Description: "How long it took to read (mins, overrides reading-speed)",
+		MinValue:    ref.New(0.0),
+		Required:    false,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "date",
+		Type:        discordgo.ApplicationCommandOptionString,
+		Description: "Date of activity completion (default is current time)",
+		Required:    false,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+}
+
 var LogCommandData = &discordgo.ApplicationCommand{
 	Name:        "log",
 	Description: "Log your time spent on language immersion",
@@ -187,6 +221,18 @@ var LogCommandData = &discordgo.ApplicationCommand{
 			Description: "Log a visual novel you read",
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Options:     vnCommandOptions,
+		},
+		{
+			Name:        "book",
+			Description: "Log a book you read",
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Options:     bookCommandOptions,
+		},
+		{
+			Name:        "manga",
+			Description: "Log a manga you read",
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Options:     bookCommandOptions,
 		},
 	},
 }
@@ -221,8 +267,14 @@ func (c *LogCommand) HandleInteraction(s *discordgo.Session, i *discordgo.Intera
 		return c.handleVideo(s, i, subcommand)
 	case "vn":
 		return c.handleVisualNovel(s, i, subcommand)
+	case "book":
+		fallthrough
+	case "manga":
+		return c.handleBook(s, i, subcommand)
+	case "anime":
+		return errors.New("anime logging is not yet supported")
 	default:
-		return nil
+		return errors.New("invalid subcommand")
 	}
 }
 
@@ -253,10 +305,6 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 			}
 
 			if !found {
-				// if err = c.userRepo.AppendActiveGuild(context.Background(), user.ID, i.GuildID); err != nil {
-				// 	log.Printf("Failed to append active guild: %s->%s\n", userId, i.GuildID)
-				// }
-
 				user.ActiveGuilds = append(user.ActiveGuilds, i.GuildID)
 
 				if err = c.userState.UpdateUser(user); err != nil {
@@ -267,6 +315,89 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 		}()
 	}
 	return user, nil
+}
+
+func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+
+	user, err := c.getUserAndTouchGuild(i)
+
+	if err != nil {
+		return err
+	}
+
+	args := subcommand.Options
+	activity := activities.NewActivity()
+	activity.Name = discordutil.GetRequiredStringOption(args, "name")
+	activity.PrimaryType = activities.ActivityImmersionTypeReading
+	if subcommand.Name == "book" {
+		activity.MediaType = ref.New(activities.ActivityMediaTypeBook)
+	} else {
+		activity.MediaType = ref.New(activities.ActivityMediaTypeManga)
+	}
+	activity.UserID = user.ID
+
+	pageCount := discordutil.GetRequiredUintOption(args, "pages")
+	duration := discordutil.GetUintOption(args, "duration")
+
+	if pageCount == 0 && duration == nil {
+		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			Content: "You must provide either a page count or a duration.",
+		})
+		return err
+	}
+
+	var durationMinutes float64
+
+	if duration != nil {
+		durationMinutes = float64(discordutil.GetRequiredUintOption(args, "duration"))
+	} else {
+		durationMinutes = float64(pageCount) / 2.0
+	}
+
+	// because time.Duration casts to uint64, we need to convert to seconds first
+	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
+
+	if pageCount != 0 {
+		activity.Meta["pages"] = pageCount
+	}
+
+	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
+
+	if err != nil {
+		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			Content: "Invalid date provided.",
+		})
+		return err
+	}
+
+	activity.Date = date
+
+	err = c.activityRepo.Create(context.Background(), activity)
+
+	if err != nil {
+		return err
+	}
+
+	embed := discordutil.NewEmbedBuilder().
+		SetTitle("Activity logged!").
+		AddField("Title", activity.Name, false).
+		AddField("Duration", activity.Duration.String(), false).
+		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
+		SetTimestamp(activity.Date).
+		SetColor(discordutil.ColorSuccess)
+
+	if pageCount != 0 {
+		embed.AddField("Pages Read", fmt.Sprintf("%d", activity.Meta["pages"]), false)
+	}
+
+	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+	})
+
+	return err
 }
 
 func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
