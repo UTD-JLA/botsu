@@ -4,31 +4,38 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ActivityRepository struct {
-	db *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func NewActivityRepository(db *pgx.Conn) *ActivityRepository {
-	return &ActivityRepository{db: db}
+func NewActivityRepository(pool *pgxpool.Pool) *ActivityRepository {
+	return &ActivityRepository{pool: pool}
 }
 
 func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) error {
-	err := r.db.
-		QueryRow(
-			ctx,
-			`INSERT INTO activities (user_id, name, primary_type, media_type, duration, date, meta)
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	defer conn.Release()
+
+	err = conn.QueryRow(
+		ctx,
+		`INSERT INTO activities (user_id, name, primary_type, media_type, duration, date, meta)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id;`,
-			activity.UserID,
-			activity.Name,
-			activity.PrimaryType,
-			activity.MediaType,
-			activity.Duration,
-			activity.Date,
-			activity.Meta).
+		activity.UserID,
+		activity.Name,
+		activity.PrimaryType,
+		activity.MediaType,
+		activity.Duration,
+		activity.Date,
+		activity.Meta).
 		Scan(&activity.ID)
 
 	return err
@@ -54,7 +61,15 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 		OFFSET $3
 	`
 
-	rows, err := r.db.Query(ctx, query, userID, limit, offset)
+	conn, err := r.pool.Acquire(ctx)
+
+	defer conn.Release()
+
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := conn.Query(ctx, query, userID, limit, offset)
 
 	if err != nil {
 		return nil, err
@@ -87,18 +102,35 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 }
 
 func (r *ActivityRepository) DeleteById(ctx context.Context, id uint64) error {
-	_, err := r.db.Exec(ctx, `
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx, `
 		UPDATE activities
 		SET deleted_at = NOW()
 		WHERE id = $1
 	`, id)
+
 	return err
 }
 
 func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, limit int, start, end time.Time) ([]*MemberStats, error) {
 	members := make([]*MemberStats, 0)
 
-	rows, err := r.db.Query(ctx, `
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, `
 		SELECT u.id, SUM(a.duration) AS total_duration
 		FROM users u
 		INNER JOIN activities a ON u.id = a.user_id

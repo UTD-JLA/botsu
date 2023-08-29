@@ -12,7 +12,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/commands"
 	"github.com/UTD-JLA/botsu/internal/users"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -30,20 +30,22 @@ func main() {
 
 	log.Println("Connecting to database")
 
-	conn, err := pgx.Connect(context.Background(), config.Database.ConnectionString())
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close(context.Background())
+	// conn, err := pgx.Connect(context.Background(), config.Database.ConnectionString())
 
-	err = conn.Ping(context.Background())
+	pool, err := pgxpool.New(context.Background(), config.Database.ConnectionString())
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	activityRepo := activities.NewActivityRepository(conn)
-	userRepo := users.NewUserRepository(conn)
+	defer pool.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	activityRepo := activities.NewActivityRepository(pool)
+	userRepo := users.NewUserRepository(pool)
 
 	bot.AddCommand(commands.PingCommandData, commands.NewPingCommand())
 	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo))
