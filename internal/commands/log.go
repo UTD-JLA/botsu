@@ -286,23 +286,36 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	activity.PrimaryType = activities.ActivityImmersionTypeReading
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVisualNovel)
 	activity.UserID = user.ID
-	activity.Meta["characters"] = discordutil.GetRequiredUintOption(args, "characters")
 
+	charCount := discordutil.GetRequiredUintOption(args, "characters")
 	duration := discordutil.GetUintOption(args, "duration")
+	readingSpeed := discordutil.GetUintOption(args, "reading-speed")
+	readingSpeedHourly := discordutil.GetUintOption(args, "reading-speed-hourly")
+
+	var durationMinutes float64
+
+	if charCount == 0 && duration == nil {
+		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			Content: "You must provide either a character count or a duration.",
+		})
+		return err
+	}
 
 	if duration != nil {
-		activity.Duration = time.Duration(*duration) * time.Minute
+		durationMinutes = float64(*duration)
+	} else if readingSpeed != nil {
+		durationMinutes = float64(charCount) / float64(*readingSpeed)
+	} else if readingSpeedHourly != nil {
+		durationMinutes = float64(charCount) / (float64(*readingSpeedHourly) / 60.0)
 	} else {
-		readingSpeed := float64(discordutil.GetUintOptionOrDefault(args, "reading-speed", 150))
-		readingSpeedHourly := discordutil.GetUintOptionOrDefault(args, "reading-speed-hourly", 0)
+		durationMinutes = float64(charCount) / 150.0
+	}
 
-		if readingSpeedHourly > 0 {
-			readingSpeed = float64(readingSpeedHourly) / 60.0
-		}
+	// because time.Duration casts to uint64, we need to convert to seconds first
+	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
-		mins := float64(activity.Meta["characters"].(uint64)) / readingSpeed
-		activity.Duration = time.Duration(mins*60) * time.Second
-
+	if charCount != 0 {
+		activity.Meta["characters"] = charCount
 	}
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
@@ -333,13 +346,6 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 		SetTimestamp(activity.Date).
 		SetColor(discordutil.ColorSuccess).
 		Build()
-
-	// return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-	// 	Type: discordgo.InteractionResponseChannelMessageWithSource,
-	// 	Data: &discordgo.InteractionResponseData{
-	// 		Embeds: []*discordgo.MessageEmbed{embed},
-	// 	},
-	// })
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed},
