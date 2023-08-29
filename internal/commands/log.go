@@ -200,6 +200,39 @@ var bookCommandOptions = []*discordgo.ApplicationCommandOption{
 	},
 }
 
+var animeCommandOptions = []*discordgo.ApplicationCommandOption{
+	{
+		Name:        "name",
+		Type:        discordgo.ApplicationCommandOptionString,
+		Description: "Title/name of the anime watched",
+		Required:    true,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "episodes",
+		Type:        discordgo.ApplicationCommandOptionInteger,
+		Description: "Number of episodes watched",
+		MinValue:    ref.New(0.0),
+		Required:    true,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "episode-duration",
+		Type:        discordgo.ApplicationCommandOptionInteger,
+		Description: "Duration of each episode (mins, default 24)",
+		MinValue:    ref.New(0.0),
+		Required:    false,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+	{
+		Name:        "date",
+		Type:        discordgo.ApplicationCommandOptionString,
+		Description: "Date of activity completion (default is current time)",
+		Required:    false,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
+}
+
 var LogCommandData = &discordgo.ApplicationCommand{
 	Name:        "log",
 	Description: "Log your time spent on language immersion",
@@ -233,6 +266,12 @@ var LogCommandData = &discordgo.ApplicationCommand{
 			Description: "Log a manga you read",
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Options:     bookCommandOptions,
+		},
+		{
+			Name:        "anime",
+			Description: "Log an anime you watched",
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Options:     animeCommandOptions,
 		},
 	},
 }
@@ -272,7 +311,7 @@ func (c *LogCommand) HandleInteraction(s *discordgo.Session, i *discordgo.Intera
 	case "manga":
 		return c.handleBook(s, i, subcommand)
 	case "anime":
-		return errors.New("anime logging is not yet supported")
+		return c.handleAnime(s, i, subcommand)
 	default:
 		return errors.New("invalid subcommand")
 	}
@@ -315,6 +354,61 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 		}()
 	}
 	return user, nil
+}
+
+func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+
+	user, err := c.getUserAndTouchGuild(i)
+
+	if err != nil {
+		return err
+	}
+
+	args := subcommand.Options
+	activity := activities.NewActivity()
+	activity.Name = discordutil.GetRequiredStringOption(args, "name")
+	activity.PrimaryType = activities.ActivityImmersionTypeListening
+	activity.MediaType = ref.New(activities.ActivityMediaTypeAnime)
+	activity.UserID = user.ID
+
+	episodeCount := discordutil.GetRequiredUintOption(args, "episodes")
+	episodeDuration := discordutil.GetUintOptionOrDefault(args, "episode-duration", 24)
+	duration := episodeDuration * episodeCount
+	activity.Duration = time.Duration(duration) * time.Minute
+	activity.Meta["episodes"] = episodeCount
+
+	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
+
+	if err != nil {
+		return err
+	}
+
+	activity.Date = date
+
+	err = c.activityRepo.Create(context.Background(), activity)
+
+	if err != nil {
+		return err
+	}
+
+	embed := discordutil.NewEmbedBuilder().
+		SetTitle("Activity logged!").
+		AddField("Title", activity.Name, false).
+		AddField("Duration", activity.Duration.String(), false).
+		AddField("Episodes Watched", fmt.Sprintf("%d", episodeCount), false).
+		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
+		SetTimestamp(activity.Date).
+		SetColor(discordutil.ColorSuccess).
+		Build()
+
+	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed},
+	})
+
+	return err
 }
 
 func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
