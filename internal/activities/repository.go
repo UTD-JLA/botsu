@@ -48,7 +48,8 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 			   name,
 			   primary_type,
 			   media_type,
-			   duration, date at time zone COALESCE(u.timezone, 'UTC'),
+			   duration,
+			   date at time zone COALESCE(u.timezone, 'UTC'),
 			   meta,
 			   CEIL(COUNT(*) OVER() / $2::float) AS page_count,
 			   CEIL($3::float / $2::float) + 1 AS page
