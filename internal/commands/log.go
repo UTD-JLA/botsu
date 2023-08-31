@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
@@ -19,10 +17,6 @@ import (
 	"github.com/golang-module/carbon/v2"
 	"github.com/kkdai/youtube/v2"
 )
-
-func init() {
-	youtube.DefaultClient = youtube.WebClient
-}
 
 var manualCommandOptions = []*discordgo.ApplicationCommandOption{
 	{
@@ -378,7 +372,7 @@ func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionC
 	episodeDuration := discordutil.GetUintOptionOrDefault(args, "episode-duration", 24)
 	duration := episodeDuration * episodeCount
 	activity.Duration = time.Duration(duration) * time.Minute
-	activity.Meta["episodes"] = episodeCount
+	activity.Meta = map[string]interface{}{"episodes": episodeCount}
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
@@ -455,7 +449,7 @@ func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCr
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
 	if pageCount != 0 {
-		activity.Meta["pages"] = pageCount
+		activity.Meta = map[string]interface{}{"pages": pageCount}
 	}
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
@@ -484,7 +478,7 @@ func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCr
 		SetColor(discordutil.ColorSuccess)
 
 	if pageCount != 0 {
-		embed.AddField("Pages Read", fmt.Sprintf("%d", activity.Meta["pages"]), false)
+		embed.AddField("Pages Read", fmt.Sprintf("%d", pageCount), false)
 	}
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
@@ -540,7 +534,7 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
 	if charCount != 0 {
-		activity.Meta["characters"] = charCount
+		activity.Meta = map[string]interface{}{"characters": charCount}
 	}
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
@@ -569,7 +563,7 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 		SetColor(discordutil.ColorSuccess)
 
 	if charCount != 0 {
-		embed.AddField("Characters Read", fmt.Sprintf("%d", activity.Meta["characters"]), false)
+		embed.AddField("Characters Read", fmt.Sprintf("%d", charCount), false)
 	}
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
@@ -592,9 +586,15 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 
 	args := subcommand.Options
 	activity := activities.NewActivity()
-	url := discordutil.GetRequiredStringOption(args, "url")
+	URL := discordutil.GetRequiredStringOption(args, "url")
 
-	video, err := c.ytClient.GetVideo(url)
+	u, err := url.Parse(URL)
+
+	if err != nil {
+		return err
+	}
+
+	video, err := activities.GetVideoInfo(context.Background(), u, false)
 
 	if err != nil {
 		return err
@@ -604,21 +604,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	activity.PrimaryType = activities.ActivityImmersionTypeListening
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVideo)
 	activity.UserID = user.ID
-	activity.Meta["url"] = url
-	activity.Meta["platform"] = "youtube"
-	activity.Meta["video_id"] = video.ID
-	activity.Meta["video_duration"] = video.Duration
-	activity.Meta["channel_id"] = video.ChannelID
-	activity.Meta["channel_name"] = video.Author
-	activity.Meta["channel_handle"] = video.ChannelHandle
-	activity.Meta["video_thumbnails"] = make([]struct {
-		Url    string `json:"url"`
-		Width  uint   `json:"width"`
-		Height uint   `json:"height"`
-	}, len(video.Thumbnails))
-	activity.Meta["related_channels"] = findRelatedChannels(video)
-	activity.Meta["related_videos"] = findRelatedVideos(video)
-	activity.Meta["video_publish_date"] = video.PublishDate
+	activity.Meta = video
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
@@ -637,61 +623,26 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 		activity.Duration = video.Duration
 	}
 
-	thumbnailUrl := ""
-	largestResolution := uint(0)
-	largestThumbnail := ""
-
-	for i, thumbnail := range video.Thumbnails {
-		if thumbnail.Width > largestResolution {
-			largestResolution = thumbnail.Width
-			largestThumbnail = thumbnail.URL
-		}
-
-		if strings.Contains(thumbnail.URL, "mqdefault.webp") {
-			thumbnailUrl = thumbnail.URL
-		}
-
-		activity.Meta["video_thumbnails"].([]struct {
-			Url    string `json:"url"`
-			Width  uint   `json:"width"`
-			Height uint   `json:"height"`
-		})[i] = struct {
-			Url    string `json:"url"`
-			Width  uint   `json:"width"`
-			Height uint   `json:"height"`
-		}{
-			Url:    thumbnail.URL,
-			Width:  thumbnail.Width,
-			Height: thumbnail.Height,
-		}
-	}
-
 	err = c.activityRepo.Create(context.Background(), activity)
 
 	if err != nil {
 		return err
 	}
 
-	if thumbnailUrl == "" {
-		thumbnailUrl = largestThumbnail
-	}
-
-	shareUrl, err := removeTimeParameter(url)
-
+	shareUrl, err := removeTimeParameter(URL)
 	if err != nil {
 		return err
 	}
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Activity logged!").
-		AddField("Channel", video.Author, false).
 		AddField("Title", video.Title, false).
+		AddField("Channel", video.ChannelName, false).
 		AddField("Duration Watched", fmt.Sprintf("%s / %s", activity.Duration.String(), video.Duration.String()), false).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
-		SetImage(thumbnailUrl).
+		SetImage(video.Thumbnail).
 		SetTimestamp(activity.Date).
-		SetColor(discordutil.ColorSuccess).
-		Build()
+		SetColor(discordutil.ColorSuccess)
 
 	row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{
@@ -700,16 +651,19 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 				Style: discordgo.LinkButton,
 				URL:   shareUrl,
 			},
-			discordgo.Button{
-				Label: "Channel",
-				Style: discordgo.LinkButton,
-				URL:   fmt.Sprintf("https://www.youtube.com/channel/%s", video.ChannelID),
-			},
 		},
 	}
 
+	if video.Platform == "youtube" {
+		row.Components = append(row.Components, discordgo.Button{
+			Label: "Channel",
+			Style: discordgo.LinkButton,
+			URL:   fmt.Sprintf("https://www.youtube.com/channel/%s", video.ChannelID),
+		})
+	}
+
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed},
+		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 		Components: []discordgo.MessageComponent{
 			row,
 		},
@@ -767,27 +721,6 @@ func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.Interaction
 			Embeds: []*discordgo.MessageEmbed{embed},
 		},
 	})
-}
-
-func findRelatedChannels(video *youtube.Video) []string {
-	channelIdRegex := regexp.MustCompile(`@([a-zA-Z0-9_-]+)`)
-	relatedChannels := make([]string, 0)
-	matches := channelIdRegex.FindAllStringSubmatch(video.Description, -1)
-	for _, match := range matches {
-		relatedChannels = append(relatedChannels, "@"+match[1])
-	}
-	return relatedChannels
-}
-
-func findRelatedVideos(video *youtube.Video) []string {
-	// video is either youtube.com/watch?v=ID or youtube.com/live/ID (for live streams) or youtu.be/ID
-	videoIdRegex := regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtube\.com/live/|youtu\.be/)([a-zA-Z0-9_-]+)`)
-	relatedVideos := make([]string, 0)
-	matches := videoIdRegex.FindAllStringSubmatch(video.Description, -1)
-	for _, match := range matches {
-		relatedVideos = append(relatedVideos, match[1])
-	}
-	return relatedVideos
 }
 
 func removeTimeParameter(urlString string) (string, error) {
