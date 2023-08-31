@@ -634,11 +634,17 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 		return err
 	}
 
+	durationString := activity.Duration.String()
+
+	if activity.Duration != video.Duration {
+		durationString = fmt.Sprintf("%s / %s", activity.Duration.String(), video.Duration.String())
+	}
+
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Activity logged!").
 		AddField("Title", video.Title, false).
 		AddField("Channel", video.ChannelName, false).
-		AddField("Duration Watched", fmt.Sprintf("%s / %s", activity.Duration.String(), video.Duration.String()), false).
+		AddField("Duration Watched", durationString, false).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
 		SetImage(video.Thumbnail).
 		SetTimestamp(activity.Date).
