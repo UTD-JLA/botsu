@@ -7,6 +7,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type MemberStats struct {
+	UserID        string
+	TotalDuration time.Duration
+}
+
+type UserActivityPage struct {
+	Activities []*Activity
+	PageCount  int
+	Page       int
+}
+
 type ActivityRepository struct {
 	pool *pgxpool.Pool
 }
