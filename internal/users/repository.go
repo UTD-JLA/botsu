@@ -3,17 +3,19 @@ package users
 import (
 	"context"
 	"log"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserRepository struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	cache sync.Map
 }
 
 func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{pool: pool}
+	return &UserRepository{pool: pool, cache: sync.Map{}}
 }
 
 func (r *UserRepository) Create(ctx context.Context, user *User) error {
@@ -36,7 +38,12 @@ func (r *UserRepository) Create(ctx context.Context, user *User) error {
 		user.Timezone).
 		Scan(&user.ID)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	r.cacheUser(user)
+	return nil
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*User, error) {
@@ -58,6 +65,8 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*User, error)
 	if err != nil {
 		return nil, err
 	}
+
+	r.cacheUser(&user)
 
 	return &user, nil
 }
@@ -96,7 +105,13 @@ func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone s
 		ON CONFLICT (id) DO UPDATE SET timezone = $2;`,
 		userId, timezone)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	user := r.getCachedUser(userId)
+	user.Timezone = &timezone
+	return nil
 }
 
 func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId string) error {
@@ -114,7 +129,13 @@ func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId 
 		ON CONFLICT (id) DO UPDATE SET active_guilds = array_append(users.active_guilds, $2);`,
 		userId, guildId)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	user := r.getCachedUser(userId)
+	user.ActiveGuilds = append(user.ActiveGuilds, guildId)
+	return nil
 }
 
 func (r *UserRepository) RemoveActiveGuild(ctx context.Context, userId, guildId string) error {
@@ -132,7 +153,22 @@ func (r *UserRepository) RemoveActiveGuild(ctx context.Context, userId, guildId 
 		WHERE id = $2;`,
 		guildId, userId)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	user := r.getCachedUser(userId)
+
+	if user != nil {
+		for i, g := range user.ActiveGuilds {
+			if g == guildId {
+				user.ActiveGuilds = append(user.ActiveGuilds[:i], user.ActiveGuilds[i+1:]...)
+				break
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *User) error {
@@ -150,5 +186,25 @@ func (r *UserRepository) Update(ctx context.Context, user *User) error {
 		WHERE id = $3;`,
 		user.ActiveGuilds, user.Timezone, user.ID)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	r.cacheUser(user)
+
+	return nil
+}
+
+func (r *UserRepository) cacheUser(user *User) {
+	r.cache.Store(user.ID, user)
+}
+
+func (r *UserRepository) getCachedUser(id string) *User {
+	user, ok := r.cache.Load(id)
+
+	if ok {
+		return user.(*User)
+	}
+
+	return nil
 }

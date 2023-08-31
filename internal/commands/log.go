@@ -272,17 +272,15 @@ var LogCommandData = &discordgo.ApplicationCommand{
 
 type LogCommand struct {
 	activityRepo *activities.ActivityRepository
-	//userRepo     *users.UserRepository
-	userState *users.UserState
-	ytClient  youtube.Client
+	userRepo     *users.UserRepository
+	ytClient     youtube.Client
 }
 
 func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository) *LogCommand {
 	return &LogCommand{
 		activityRepo: ar,
-		//userRepo:     ur,
-		ytClient:  youtube.Client{},
-		userState: users.NewUserState(ur),
+		userRepo:     ur,
+		ytClient:     youtube.Client{},
 	}
 }
 
@@ -320,8 +318,7 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 		userId = i.Member.User.ID
 	}
 
-	//user, err := c.userRepo.FindOrCreate(context.Background(), userId)
-	user, err := c.userState.GetUser(userId)
+	user, err := c.userRepo.FindOrCreate(context.Background(), userId)
 
 	if err != nil {
 		return nil, err
@@ -338,9 +335,7 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 			}
 
 			if !found {
-				user.ActiveGuilds = append(user.ActiveGuilds, i.GuildID)
-
-				if err = c.userState.UpdateUser(user); err != nil {
+				if err = c.userRepo.AppendActiveGuild(context.Background(), userId, i.GuildID); err != nil {
 					log.Printf("Failed to append active guild: %s->%s\n", userId, i.GuildID)
 					log.Printf("Error: %v\n", err)
 				}
