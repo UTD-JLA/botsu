@@ -12,13 +12,59 @@ import (
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
+	"github.com/golang-module/carbon/v2"
 )
 
 var LeaderboardCommandData = &discordgo.ApplicationCommand{
 	Name:         "leaderboard",
 	Description:  "View the leaderboard",
 	DMPermission: ref.New(false),
-	Options:      []*discordgo.ApplicationCommandOption{},
+	Options: []*discordgo.ApplicationCommandOption{
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "day",
+			Description: "View the leaderboard for the current day",
+		},
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "week",
+			Description: "View the leaderboard for the current week",
+		},
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "month",
+			Description: "View the leaderboard for the current month",
+		},
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "year",
+			Description: "View the leaderboard for the current year",
+		},
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "all",
+			Description: "View the leaderboard for all time",
+		},
+		// {
+		// 	Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 	Name:        "custom",
+		// 	Description: "View the leaderboard over a custom time period",
+		// 	Options: []*discordgo.ApplicationCommandOption{
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionString,
+		// 			Name:        "start",
+		// 			Description: "The start date",
+		// 			Required:    true,
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionString,
+		// 			Name:        "end",
+		// 			Description: "The end date",
+		// 			Required:    true,
+		// 		},
+		// 	},
+		// },
+	},
 }
 
 type LeaderboardCommand struct {
@@ -43,7 +89,31 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 		return errors.New("this command can only be used in a guild")
 	}
 
-	topMembers, err := c.r.GetTopMembers(context.Background(), i.GuildID, 10, time.Unix(0, 0), time.Now())
+	//isRollingLeaderboard := true
+	var start, end time.Time
+	now := carbon.Now(carbon.UTC)
+
+	switch i.ApplicationCommandData().Options[0].Name {
+	case "day":
+		start = now.StartOfDay().ToStdTime()
+		end = now.EndOfDay().ToStdTime()
+	case "week":
+		start = now.StartOfWeek().ToStdTime()
+		end = now.EndOfWeek().ToStdTime()
+	case "month":
+		start = now.StartOfMonth().ToStdTime()
+		end = now.EndOfMonth().ToStdTime()
+	case "year":
+		start = now.StartOfYear().ToStdTime()
+		end = now.EndOfYear().ToStdTime()
+	case "all":
+		start = time.Unix(0, 0)
+		end = time.Now()
+		//isRollingLeaderboard = false
+	}
+
+	// Note: Do not go over 100 members as Discord will not allow fetching 100+ in a single chunk
+	topMembers, err := c.r.GetTopMembers(context.Background(), i.GuildID, 10, start, end)
 
 	if err != nil {
 		return err
@@ -102,11 +172,20 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 		}
 	}
 
+	description := fmt.Sprintf("Starting <t:%d:R>, resetting <t:%d:R>.", start.Unix(), end.Unix())
+
 	embed := discordutil.NewEmbedBuilder().
+		SetDescription(description).
 		SetTitle("Leaderboard").
-		SetColor(discordutil.ColorPrimary)
+		SetColor(discordutil.ColorPrimary).
+		SetTimestamp(time.Now())
 
 	deadMembers := make([]string, 0, len(topMembers))
+
+	// if isRollingLeaderboard {
+	// 	embed.SetFooter("Next reset", "")
+	// 	embed.SetTimestamp(end)
+	// }
 
 	for x, m := range topMembers {
 		member, ok := foundMembers[m.UserID]
