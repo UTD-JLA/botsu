@@ -84,6 +84,10 @@ func GetEntry(index int) (anime *Anime, err error) {
 func Search(query string) (results []SearchResult, err error) {
 	q := bleve.NewMatchQuery(query)
 	search := bleve.NewSearchRequest(q)
+
+	search.SortBy([]string{"-_score"})
+	search.Size = 25
+
 	searchResults, err := index.Search(search)
 
 	if err != nil {
