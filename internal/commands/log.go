@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/users"
+	"github.com/UTD-JLA/botsu/pkg/aodb"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 
@@ -196,11 +199,12 @@ var bookCommandOptions = []*discordgo.ApplicationCommandOption{
 
 var animeCommandOptions = []*discordgo.ApplicationCommandOption{
 	{
-		Name:        "name",
-		Type:        discordgo.ApplicationCommandOptionString,
-		Description: "Title/name of the anime watched",
-		Required:    true,
-		Options:     []*discordgo.ApplicationCommandOption{},
+		Name:         "name",
+		Type:         discordgo.ApplicationCommandOptionString,
+		Description:  "Title/name of the anime watched",
+		Required:     true,
+		Options:      []*discordgo.ApplicationCommandOption{},
+		Autocomplete: true,
 	},
 	{
 		Name:        "episodes",
@@ -286,7 +290,7 @@ func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository) 
 
 func (c *LogCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	if i.Type != discordgo.InteractionApplicationCommand {
-		return nil
+		return c.handleAutocomplete(s, i)
 	}
 
 	subcommand := i.ApplicationCommandData().Options[0]
@@ -307,6 +311,33 @@ func (c *LogCommand) HandleInteraction(s *discordgo.Session, i *discordgo.Intera
 	default:
 		return errors.New("invalid subcommand")
 	}
+}
+
+func (c *LogCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	data := i.ApplicationCommandData()
+	focuedOption := discordutil.GetFocusedOption(data.Options[0].Options)
+
+	if focuedOption == nil {
+		return nil
+	}
+
+	if focuedOption.Name != "name" {
+		return nil
+	}
+
+	input := focuedOption.StringValue()
+	results, err := createAutocompleteResult(input)
+
+	if err != nil {
+		return err
+	}
+
+	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: results,
+		},
+	})
 }
 
 func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*users.User, error) {
@@ -358,16 +389,44 @@ func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionC
 
 	args := subcommand.Options
 	activity := activities.NewActivity()
-	activity.Name = discordutil.GetRequiredStringOption(args, "name")
-	activity.PrimaryType = activities.ActivityImmersionTypeListening
-	activity.MediaType = ref.New(activities.ActivityMediaTypeAnime)
-	activity.UserID = user.ID
 
 	episodeCount := discordutil.GetRequiredUintOption(args, "episodes")
 	episodeDuration := discordutil.GetUintOptionOrDefault(args, "episode-duration", 24)
 	duration := episodeDuration * episodeCount
+
+	nameInput := discordutil.GetRequiredStringOption(args, "name")
+	thumbnail := ""
+	var namedSources map[string]string
+
+	if isAutocompletedEntry(nameInput) {
+		anime, err := resolveAnimeFromAutocomplete(nameInput)
+		if err != nil {
+			return err
+		}
+
+		activity.Name = anime.Title
+		thumbnail = anime.Thumbnail
+		activity.Meta = map[string]interface{}{
+			"episodes_watched": episodeCount,
+			"episode_length":   episodeDuration,
+			"sources":          anime.Sources,
+			"title":            anime.Title,
+			"synonyms":         anime.Synonyms,
+			"tags":             anime.Tags,
+		}
+		namedSources = getNamedSources(anime.Sources)
+	} else {
+		activity.Name = nameInput
+		activity.Meta = map[string]interface{}{
+			"episodes_watched": episodeCount,
+			"episode_length":   episodeDuration,
+		}
+	}
+
 	activity.Duration = time.Duration(duration) * time.Minute
-	activity.Meta = map[string]interface{}{"episodes": episodeCount}
+	activity.PrimaryType = activities.ActivityImmersionTypeListening
+	activity.MediaType = ref.New(activities.ActivityMediaTypeAnime)
+	activity.UserID = user.ID
 
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
@@ -389,13 +448,33 @@ func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionC
 		AddField("Duration", activity.Duration.String(), false).
 		AddField("Episodes Watched", fmt.Sprintf("%d", episodeCount), false).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
+		SetThumbnail(thumbnail).
 		SetTimestamp(activity.Date).
 		SetColor(discordutil.ColorSuccess).
 		Build()
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+	row := discordgo.ActionsRow{
+		Components: []discordgo.MessageComponent{},
+	}
+
+	for name, url := range namedSources {
+		row.Components = append(row.Components, discordgo.Button{
+			Label:    name,
+			Style:    discordgo.LinkButton,
+			Disabled: false,
+			URL:      url,
+		})
+	}
+
+	params := discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed},
-	})
+	}
+
+	if len(row.Components) > 0 {
+		params.Components = []discordgo.MessageComponent{row}
+	}
+
+	_, err = s.FollowupMessageCreate(i.Interaction, false, &params)
 
 	return err
 }
@@ -722,6 +801,84 @@ func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.Interaction
 			Embeds: []*discordgo.MessageEmbed{embed},
 		},
 	})
+}
+
+func getNamedSources(sources []string) map[string]string {
+	result := make(map[string]string)
+	for _, source := range sources {
+		if strings.HasPrefix(source, "https://myanimelist.net/") {
+			result["MAL"] = source
+		} else if strings.HasPrefix(source, "https://anilist.co/") {
+			result["AniList"] = source
+		} else if strings.HasPrefix(source, "https://kitsu.io/") {
+			result["Kitsu"] = source
+		} else if strings.HasPrefix(source, "https://anidb.net/") {
+			result["AniDB"] = source
+		}
+	}
+
+	// remove kitsu and anidb if they are not the only sources
+	if len(result) > 2 {
+		delete(result, "Kitsu")
+		delete(result, "AniDB")
+	}
+
+	return result
+}
+
+func truncateLongString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen-3] + "..."
+	}
+	return s
+}
+
+func createAutocompleteResult(input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
+	results, err := aodb.Search(input)
+
+	if err != nil {
+		return
+	}
+
+	choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for i, result := range results {
+		if i >= 25 {
+			break
+		}
+
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  truncateLongString(result.Anime.Title, 100),
+			Value: fmt.Sprintf("${%d}", result.Index),
+		})
+	}
+
+	return
+}
+
+func isAutocompletedEntry(input string) bool {
+	return len(input) > 0 && strings.HasPrefix(input, "${") && strings.HasSuffix(input, "}")
+}
+
+func resolveAnimeFromAutocomplete(input string) (*aodb.Anime, error) {
+	if !isAutocompletedEntry(input) {
+		return nil, errors.New("invalid input")
+	}
+
+	indexStr := input[2 : len(input)-1]
+	index, err := strconv.Atoi(indexStr)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := aodb.GetEntry(index)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func removeTimeParameter(urlString string) (string, error) {

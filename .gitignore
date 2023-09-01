@@ -1,1 +1,3 @@
 config.toml
+*.bleve
+*.json

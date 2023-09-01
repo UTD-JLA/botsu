@@ -11,6 +11,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/commands"
 	"github.com/UTD-JLA/botsu/internal/users"
+	"github.com/UTD-JLA/botsu/pkg/aodb"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,6 +22,22 @@ func main() {
 	config := NewConfig()
 
 	err := config.Load("config.toml")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Reading anime database file")
+
+	err = aodb.ReadDatabaseFile("anime-offline-database.json")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Creating index")
+
+	err = aodb.CreateIndex()
 
 	if err != nil {
 		log.Fatal(err)
