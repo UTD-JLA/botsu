@@ -58,7 +58,7 @@ func CreateIndex() (err error) {
 	batch := index.NewBatch()
 
 	for i, anime := range db.Data {
-		batch.Index(strconv.Itoa(i), anime)
+		batch.Index(strconv.Itoa(i), &anime)
 	}
 
 	err = index.Batch(batch)

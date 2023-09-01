@@ -26,3 +26,7 @@ type Anime struct {
 	Relations []string `json:"relations"`
 	Tags      []string `json:"tags"`
 }
+
+func (a *Anime) BleveType() string {
+	return "anime"
+}
