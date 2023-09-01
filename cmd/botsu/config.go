@@ -9,16 +9,17 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	Token    string
+	Database DatabaseConfig `toml:"database"`
+	AodbPath string         `toml:"aodb_path"`
+	Token    string         `toml:"token"`
 }
 
 type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Database string
+	Host     string `toml:"host"`
+	Port     int    `toml:"port"`
+	User     string `toml:"user"`
+	Password string `toml:"password"`
+	Database string `toml:"database"`
 }
 
 func (c *DatabaseConfig) ConnectionString() string {

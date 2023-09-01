@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -16,12 +17,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var configPath = flag.String("config", "config.toml", "Path to config file")
+
 func main() {
+	flag.Parse()
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	config := NewConfig()
 
-	err := config.Load("config.toml")
+	err := config.Load(*configPath)
 
 	if err != nil {
 		log.Fatal(err)
@@ -29,7 +34,7 @@ func main() {
 
 	log.Println("Reading anime database file")
 
-	err = aodb.ReadDatabaseFile("anime-offline-database.json")
+	err = aodb.ReadDatabaseFile(config.AodbPath)
 
 	if err != nil {
 		log.Fatal(err)
@@ -46,8 +51,6 @@ func main() {
 	bot := bot.NewBot()
 
 	log.Println("Connecting to database")
-
-	// conn, err := pgx.Connect(context.Background(), config.Database.ConnectionString())
 
 	pool, err := pgxpool.New(context.Background(), config.Database.ConnectionString())
 
