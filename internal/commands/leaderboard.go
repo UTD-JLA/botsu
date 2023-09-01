@@ -45,25 +45,25 @@ var LeaderboardCommandData = &discordgo.ApplicationCommand{
 			Name:        "all",
 			Description: "View the leaderboard for all time",
 		},
-		// {
-		// 	Type:        discordgo.ApplicationCommandOptionSubCommand,
-		// 	Name:        "custom",
-		// 	Description: "View the leaderboard over a custom time period",
-		// 	Options: []*discordgo.ApplicationCommandOption{
-		// 		{
-		// 			Type:        discordgo.ApplicationCommandOptionString,
-		// 			Name:        "start",
-		// 			Description: "The start date",
-		// 			Required:    true,
-		// 		},
-		// 		{
-		// 			Type:        discordgo.ApplicationCommandOptionString,
-		// 			Name:        "end",
-		// 			Description: "The end date",
-		// 			Required:    true,
-		// 		},
-		// 	},
-		// },
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "custom",
+			Description: "View the leaderboard over a custom time period",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "start",
+					Description: "The start date",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "end",
+					Description: "The end date",
+					Required:    true,
+				},
+			},
+		},
 	},
 }
 
@@ -89,7 +89,6 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 		return errors.New("this command can only be used in a guild")
 	}
 
-	//isRollingLeaderboard := true
 	var start, end time.Time
 	now := carbon.Now(carbon.UTC)
 
@@ -109,7 +108,47 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 	case "all":
 		start = time.Unix(0, 0)
 		end = time.Now()
-		//isRollingLeaderboard = false
+	case "custom":
+		options := i.ApplicationCommandData().Options[0].Options
+		user, err := c.u.FindByID(context.Background(), i.Member.User.ID)
+
+		if err != nil {
+			return err
+		}
+
+		timezone := carbon.UTC
+
+		if user != nil && user.Timezone != nil {
+			timezone = *user.Timezone
+		}
+
+		startString := discordutil.GetRequiredStringOption(options, "start")
+		endString := discordutil.GetRequiredStringOption(options, "end")
+		carbonStart := carbon.SetTimezone(timezone).Parse(startString)
+		carbonEnd := carbon.SetTimezone(timezone).Parse(endString)
+
+		validStart := carbonStart.IsValid()
+		validEnd := carbonEnd.IsValid()
+		errorMsg := ""
+
+		if !validStart && !validEnd {
+			errorMsg = "Invalid start and end date."
+		} else if !validStart {
+			errorMsg = "Invalid start date."
+		} else if !validEnd {
+			errorMsg = "Invalid end date."
+		}
+
+		if errorMsg != "" {
+			_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+				Content: errorMsg,
+			})
+
+			return err
+		}
+
+		start = carbonStart.ToStdTime()
+		end = carbonEnd.ToStdTime()
 	}
 
 	// Note: Do not go over 100 members as Discord will not allow fetching 100+ in a single chunk
