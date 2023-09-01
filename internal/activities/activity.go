@@ -30,6 +30,6 @@ type Activity struct {
 
 func NewActivity() *Activity {
 	return &Activity{
-		Meta: nil,
+		Meta: make(map[string]interface{}),
 	}
 }
