@@ -110,7 +110,11 @@ func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone s
 	}
 
 	user := r.getCachedUser(userId)
-	user.Timezone = &timezone
+
+	if user != nil {
+		user.Timezone = &timezone
+	}
+
 	return nil
 }
 
@@ -134,7 +138,11 @@ func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId 
 	}
 
 	user := r.getCachedUser(userId)
-	user.ActiveGuilds = append(user.ActiveGuilds, guildId)
+
+	if user != nil {
+		user.ActiveGuilds = append(user.ActiveGuilds, guildId)
+	}
+
 	return nil
 }
 
