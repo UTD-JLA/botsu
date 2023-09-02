@@ -75,11 +75,11 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 
 	conn, err := r.pool.Acquire(ctx)
 
-	defer conn.Release()
-
 	if err != nil {
 		return nil, err
 	}
+
+	defer conn.Release()
 
 	rows, err := conn.Query(ctx, query, userID, limit, offset)
 
