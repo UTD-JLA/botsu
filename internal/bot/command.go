@@ -5,7 +5,7 @@ import (
 )
 
 type CommandHandler interface {
-	HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error
+	Handle(ctx *InteractionContext) error
 }
 
 type Command struct {
@@ -26,11 +26,11 @@ func (c CommandCollection) Add(data *discordgo.ApplicationCommand, handler Comma
 	}
 }
 
-func (c CommandCollection) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	cmd, ok := c[i.ApplicationCommandData().Name]
+func (c CommandCollection) Handle(ctx *InteractionContext) error {
+	cmd, ok := c[ctx.Interaction().ApplicationCommandData().Name]
 	if !ok {
 		return nil
 	}
 
-	return cmd.Handler.HandleInteraction(s, i)
+	return cmd.Handler.Handle(ctx)
 }

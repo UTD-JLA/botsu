@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
+	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/bwmarrin/discordgo"
 )
@@ -31,19 +32,21 @@ func NewHistoryCommand(r *activities.ActivityRepository) *HistoryCommand {
 	return &HistoryCommand{r: r}
 }
 
-func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
+func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
+	if err := ctx.DeferResponse(); err != nil {
+		return err
+	}
 
 	offset := 0
-	user := discordutil.GetUserOption(i.ApplicationCommandData().Options, "user", s)
+	i := ctx.Interaction()
+	s := ctx.Session()
+	user := discordutil.GetUserOption(ctx.Options(), "user", s)
 
 	if user == nil {
 		user = discordutil.GetInteractionUser(i)
 	}
 
-	page, err := c.r.PageByUserID(context.Background(), user.ID, 6, offset)
+	page, err := c.r.PageByUserID(ctx.Context(), user.ID, 6, offset)
 
 	if err != nil {
 		return err
@@ -76,7 +79,7 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 	collector := discordutil.NewMessageComponentCollector(s)
 	defer collector.Close()
 
-	msg, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+	msg, err := ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
@@ -86,7 +89,7 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 				},
 			},
 		},
-	})
+	}, true)
 
 	collector.Start(func(ci *discordgo.InteractionCreate) bool {
 		return ci.Message.ID == msg.ID &&
@@ -97,13 +100,19 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 		return err
 	}
 
+	timeout := time.After(time.Minute * 3)
+
 	for {
 		select {
-		case <-time.After(time.Minute * 3):
+		case <-timeout:
+			return nil
 		case ci := <-collector.Channel():
+			ciContext, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))
+			defer cancel()
+
 			if ci.MessageComponentData().CustomID == "history_previous" {
 				offset -= 6
-				page, err = c.r.PageByUserID(context.Background(), user.ID, 6, offset)
+				page, err = c.r.PageByUserID(ciContext, user.ID, 6, offset)
 
 				if err != nil {
 					return err
@@ -145,7 +154,7 @@ func (c *HistoryCommand) HandleInteraction(s *discordgo.Session, i *discordgo.In
 				}
 			} else if ci.MessageComponentData().CustomID == "history_next" {
 				offset += 6
-				page, err = c.r.PageByUserID(context.Background(), user.ID, 6, offset)
+				page, err = c.r.PageByUserID(ciContext, user.ID, 6, offset)
 
 				if err != nil {
 					return err

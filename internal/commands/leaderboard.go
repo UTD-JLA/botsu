@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
+	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
@@ -76,14 +77,13 @@ func NewLeaderboardCommand(r *activities.ActivityRepository, u *users.UserReposi
 	return &LeaderboardCommand{r: r, u: u}
 }
 
-func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
-
-	if err != nil {
+func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
+	if err := ctx.DeferResponse(); err != nil {
 		return err
 	}
+
+	i := ctx.Interaction()
+	s := ctx.Session()
 
 	if i.GuildID == "" {
 		return errors.New("this command can only be used in a guild")
@@ -110,7 +110,7 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 		end = time.Now()
 	case "custom":
 		options := i.ApplicationCommandData().Options[0].Options
-		user, err := c.u.FindByID(context.Background(), i.Member.User.ID)
+		user, err := c.u.FindByID(ctx.Context(), i.Member.User.ID)
 
 		if err != nil {
 			return err
@@ -152,7 +152,7 @@ func (c *LeaderboardCommand) HandleInteraction(s *discordgo.Session, i *discordg
 	}
 
 	// Note: Do not go over 100 members as Discord will not allow fetching 100+ in a single chunk
-	topMembers, err := c.r.GetTopMembers(context.Background(), i.GuildID, 10, start, end)
+	topMembers, err := c.r.GetTopMembers(ctx.Context(), i.GuildID, 10, start, end)
 
 	if err != nil {
 		return err

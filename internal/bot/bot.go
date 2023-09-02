@@ -1,10 +1,15 @@
 package bot
 
 import (
+	"context"
 	"log"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var unexpectedErrorMessage = &discordgo.WebhookParams{
+	Content: "An unexpected error occurred!",
+}
 
 type Bot struct {
 	session         *discordgo.Session
@@ -24,17 +29,22 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 }
 
 func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var err error
-
-	switch i.Type {
-	case discordgo.InteractionApplicationCommand:
-		fallthrough
-	case discordgo.InteractionApplicationCommandAutocomplete:
-		err = b.commands.HandleInteraction(s, i)
+	if i.Type != discordgo.InteractionApplicationCommand && i.Type != discordgo.InteractionApplicationCommandAutocomplete {
+		return
 	}
 
+	ctx := NewInteractionContext(s, i, context.Background())
+
+	defer ctx.Cancel()
+
+	err := b.commands.Handle(ctx)
 	if err != nil {
-		log.Println("Error executing command:", err)
+		log.Println("Error handling command", err)
+
+		// if this is a command, and we haven't responded yet, respond with an error
+		if ctx.IsCommand() && ctx.Deferred() {
+			ctx.RespondOrFollowup(unexpectedErrorMessage, false)
+		}
 	}
 }
 

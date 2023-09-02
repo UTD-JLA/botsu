@@ -1,10 +1,10 @@
 package commands
 
 import (
-	"context"
 	"strings"
 	"unicode"
 
+	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/bwmarrin/discordgo"
@@ -93,43 +93,38 @@ func NewConfigCommand(r *users.UserRepository) *ConfigCommand {
 	return &ConfigCommand{r: r}
 }
 
-func (c *ConfigCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
-		return c.handleAutocomplete(s, i)
+func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
+	if ctx.IsAutocomplete() {
+		return c.handleAutocomplete(ctx)
 	}
 
-	data := i.ApplicationCommandData()
-	switch data.Options[0].Name {
+	i := ctx.Interaction()
+	options := ctx.Options()
+
+	switch options[0].Name {
 	case "timezone":
-		timezone := discordutil.GetRequiredStringOption(data.Options, "timezone")
+		timezone := discordutil.GetRequiredStringOption(options, "timezone")
 
 		if !isValidTimezone(timezone) {
-			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "Invalid timezone!",
-				},
+			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+				Content: "Invalid timezone",
 			})
 		}
 
-		err := c.r.SetUserTimezone(context.Background(), discordutil.GetInteractionUser(i).ID, timezone)
+		err := c.r.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
 		if err != nil {
 			return err
 		}
 
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Timezone updated!",
-			},
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Timezone set!",
 		})
 	}
 	return nil
 }
 
-func (c *ConfigCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	data := i.ApplicationCommandData()
-	focuedOption := discordutil.GetFocusedOption(data.Options)
+func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
+	focuedOption := discordutil.GetFocusedOption(ctx.Options())
 
 	if focuedOption == nil {
 		return nil
@@ -171,11 +166,8 @@ func (c *ConfigCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.In
 			}
 		}
 
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionApplicationCommandAutocompleteResult,
-			Data: &discordgo.InteractionResponseData{
-				Choices: results,
-			},
+		return ctx.Respond(discordgo.InteractionApplicationCommandAutocompleteResult, &discordgo.InteractionResponseData{
+			Choices: results,
 		})
 	default:
 		return nil

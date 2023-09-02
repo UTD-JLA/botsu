@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
+	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/aodb"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
@@ -288,26 +289,26 @@ func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository) 
 	}
 }
 
-func (c *LogCommand) HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	if i.Type != discordgo.InteractionApplicationCommand {
-		return c.handleAutocomplete(s, i)
+func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
+	if ctx.IsAutocomplete() {
+		return c.handleAutocomplete(ctx.Session(), ctx.Interaction())
 	}
 
-	subcommand := i.ApplicationCommandData().Options[0]
+	subcommand := ctx.Data().Options[0]
 
 	switch subcommand.Name {
 	case "manual":
-		return c.handleManual(s, i, subcommand)
+		return c.handleManual(ctx, subcommand)
 	case "video":
-		return c.handleVideo(s, i, subcommand)
+		return c.handleVideo(ctx, subcommand)
 	case "vn":
-		return c.handleVisualNovel(s, i, subcommand)
+		return c.handleVisualNovel(ctx, subcommand)
 	case "book":
 		fallthrough
 	case "manga":
-		return c.handleBook(s, i, subcommand)
+		return c.handleBook(ctx, subcommand)
 	case "anime":
-		return c.handleAnime(s, i, subcommand)
+		return c.handleAnime(ctx, subcommand)
 	default:
 		return errors.New("invalid subcommand")
 	}
@@ -340,7 +341,7 @@ func (c *LogCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.Inter
 	})
 }
 
-func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*users.User, error) {
+func (c *LogCommand) getUserAndTouchGuild(ctx context.Context, i *discordgo.InteractionCreate) (*users.User, error) {
 	var userId string
 
 	if i.GuildID == "" {
@@ -349,7 +350,7 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 		userId = i.Member.User.ID
 	}
 
-	user, err := c.userRepo.FindOrCreate(context.Background(), userId)
+	user, err := c.userRepo.FindOrCreate(ctx, userId)
 
 	if err != nil {
 		return nil, err
@@ -376,12 +377,12 @@ func (c *LogCommand) getUserAndTouchGuild(i *discordgo.InteractionCreate) (*user
 	return user, nil
 }
 
-func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
+func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	if err := ctx.DeferResponse(); err != nil {
+		return err
+	}
 
-	user, err := c.getUserAndTouchGuild(i)
+	user, err := c.getUserAndTouchGuild(ctx.Context(), ctx.Interaction())
 
 	if err != nil {
 		return err
@@ -436,7 +437,7 @@ func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionC
 
 	activity.Date = date
 
-	err = c.activityRepo.Create(context.Background(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -474,17 +475,17 @@ func (c *LogCommand) handleAnime(s *discordgo.Session, i *discordgo.InteractionC
 		params.Components = []discordgo.MessageComponent{row}
 	}
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &params)
+	_, err = ctx.Followup(&params, false)
 
 	return err
 }
 
-func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
+func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	if err := ctx.DeferResponse(); err != nil {
+		return err
+	}
 
-	user, err := c.getUserAndTouchGuild(i)
+	user, err := c.getUserAndTouchGuild(ctx.Context(), ctx.Interaction())
 
 	if err != nil {
 		return err
@@ -505,9 +506,9 @@ func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCr
 	duration := discordutil.GetUintOption(args, "duration")
 
 	if pageCount == 0 && duration == nil {
-		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "You must provide either a page count or a duration.",
-		})
+		}, false)
 		return err
 	}
 
@@ -529,15 +530,15 @@ func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCr
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "Invalid date provided.",
-		})
+		}, false)
 		return err
 	}
 
 	activity.Date = date
 
-	err = c.activityRepo.Create(context.Background(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -555,19 +556,19 @@ func (c *LogCommand) handleBook(s *discordgo.Session, i *discordgo.InteractionCr
 		embed.AddField("Pages Read", fmt.Sprintf("%d", pageCount), false)
 	}
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+	_, err = ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
-	})
+	}, false)
 
 	return err
 }
 
-func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
+func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	if err := ctx.DeferResponse(); err != nil {
+		return err
+	}
 
-	user, err := c.getUserAndTouchGuild(i)
+	user, err := c.getUserAndTouchGuild(ctx.Context(), ctx.Interaction())
 
 	if err != nil {
 		return err
@@ -588,9 +589,9 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	var durationMinutes float64
 
 	if charCount == 0 && duration == nil {
-		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "You must provide either a character count or a duration.",
-		})
+		}, false)
 		return err
 	}
 
@@ -614,15 +615,15 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "Invalid date provided.",
-		})
+		}, false)
 		return err
 	}
 
 	activity.Date = date
 
-	err = c.activityRepo.Create(context.Background(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -640,19 +641,19 @@ func (c *LogCommand) handleVisualNovel(s *discordgo.Session, i *discordgo.Intera
 		embed.AddField("Characters Read", fmt.Sprintf("%d", charCount), false)
 	}
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+	_, err = ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
-	})
+	}, false)
 
 	return err
 }
 
-func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-	})
+func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	if err := ctx.DeferResponse(); err != nil {
+		return err
+	}
 
-	user, err := c.getUserAndTouchGuild(i)
+	user, err := c.getUserAndTouchGuild(ctx.Context(), ctx.Interaction())
 
 	if err != nil {
 		return err
@@ -668,7 +669,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 		return err
 	}
 
-	video, err := activities.GetVideoInfo(context.Background(), u, false)
+	video, err := activities.GetVideoInfo(ctx.Context(), u, false)
 
 	if err != nil {
 		return err
@@ -683,9 +684,9 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "Invalid date provided.",
-		})
+		}, false)
 		return err
 	}
 
@@ -697,7 +698,7 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 		activity.Duration = video.Duration
 	}
 
-	err = c.activityRepo.Create(context.Background(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -742,18 +743,16 @@ func (c *LogCommand) handleVideo(s *discordgo.Session, i *discordgo.InteractionC
 		})
 	}
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
-		Components: []discordgo.MessageComponent{
-			row,
-		},
-	})
+	_, err = ctx.Followup(&discordgo.WebhookParams{
+		Embeds:     []*discordgo.MessageEmbed{embed.Build()},
+		Components: []discordgo.MessageComponent{row},
+	}, false)
 
 	return err
 }
 
-func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.InteractionCreate, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
-	user, err := c.getUserAndTouchGuild(i)
+func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	user, err := c.getUserAndTouchGuild(ctx.ResponseContext(), ctx.Interaction())
 
 	if err != nil {
 		return err
@@ -770,17 +769,14 @@ func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.Interaction
 	date, err := parseDate(discordutil.GetStringOption(args, "date"), user.Timezone)
 
 	if err != nil {
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Invalid date provided.",
-			},
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Invalid date provided.",
 		})
 	}
 
 	activity.Date = date
 
-	err = c.activityRepo.Create(context.Background(), activity)
+	err = c.activityRepo.Create(ctx.ResponseContext(), activity)
 
 	if err != nil {
 		return err
@@ -795,11 +791,8 @@ func (c *LogCommand) handleManual(s *discordgo.Session, i *discordgo.Interaction
 		SetColor(discordutil.ColorSuccess).
 		Build()
 
-	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+		Embeds: []*discordgo.MessageEmbed{embed},
 	})
 }
 
