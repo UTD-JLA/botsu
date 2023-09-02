@@ -52,6 +52,104 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 	return err
 }
 
+func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID string) (*Activity, error) {
+	query := `
+		SELECT activities.id,
+			   user_id,	
+			   name,
+			   primary_type,
+			   media_type,
+			   duration,
+			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   created_at,
+			   deleted_at,
+			   meta
+		FROM activities
+		INNER JOIN users u ON activities.user_id = u.id
+		WHERE user_id = $1
+		AND deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	var activity Activity
+
+	err = conn.QueryRow(ctx, query, userID).Scan(
+		&activity.ID,
+		&activity.UserID,
+		&activity.Name,
+		&activity.PrimaryType,
+		&activity.MediaType,
+		&activity.Duration,
+		&activity.Date,
+		&activity.CreatedAt,
+		&activity.DeletedAt,
+		&activity.Meta,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &activity, nil
+}
+
+func (r *ActivityRepository) GetByID(ctx context.Context, id uint64) (*Activity, error) {
+	query := `
+		SELECT activities.id,
+			   user_id,
+			   name,
+			   primary_type,
+			   media_type,
+			   duration,
+			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   created_at,
+			   deleted_at,
+			   meta
+		FROM activities
+		INNER JOIN users u ON activities.user_id = u.id
+		WHERE activities.id = $1
+		AND deleted_at IS NULL
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	var activity Activity
+
+	err = conn.QueryRow(ctx, query, id).Scan(
+		&activity.ID,
+		&activity.UserID,
+		&activity.Name,
+		&activity.PrimaryType,
+		&activity.MediaType,
+		&activity.Duration,
+		&activity.Date,
+		&activity.CreatedAt,
+		&activity.DeletedAt,
+		&activity.Meta,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &activity, nil
+}
+
 func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, limit, offset int) (*UserActivityPage, error) {
 	query := `
 		SELECT activities.id,
@@ -61,6 +159,8 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 			   media_type,
 			   duration,
 			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   created_at,
+			   deleted_at,
 			   meta,
 			   CEIL(COUNT(*) OVER() / $2::float) AS page_count,
 			   CEIL($3::float / $2::float) + 1 AS page
@@ -102,6 +202,8 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 			&activity.MediaType,
 			&activity.Duration,
 			&activity.Date,
+			&activity.CreatedAt,
+			&activity.DeletedAt,
 			&activity.Meta,
 			&page.PageCount,
 			&page.Page,

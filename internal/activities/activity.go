@@ -26,6 +26,8 @@ type Activity struct {
 	Duration    time.Duration
 	Date        time.Time
 	Meta        interface{}
+	CreatedAt   time.Time
+	DeletedAt   *time.Time
 }
 
 func NewActivity() *Activity {
