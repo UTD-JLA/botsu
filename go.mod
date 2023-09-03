@@ -3,11 +3,13 @@ module github.com/UTD-JLA/botsu
 go 1.21
 
 require (
+	github.com/blevesearch/bleve/v2 v2.3.9
 	github.com/bwmarrin/discordgo v0.27.1
 	github.com/golang-module/carbon/v2 v2.2.5
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/kkdai/youtube/v2 v2.8.3
 	github.com/pelletier/go-toml/v2 v2.0.9
+	github.com/stretchr/testify v1.8.4
 	github.com/wader/goutubedl v0.0.0-20230817095831-89e825670ccd
 )
 
@@ -17,7 +19,6 @@ require (
 	github.com/RoaringBitmap/roaring v1.2.3 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
-	github.com/blevesearch/bleve/v2 v2.3.9 // indirect
 	github.com/blevesearch/bleve_index_api v1.0.5 // indirect
 	github.com/blevesearch/geo v0.1.17 // indirect
 	github.com/blevesearch/go-porterstemmer v1.0.3 // indirect
@@ -48,7 +49,6 @@ require (
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	golang.org/x/crypto v0.12.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
