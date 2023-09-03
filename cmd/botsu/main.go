@@ -72,6 +72,7 @@ func main() {
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo))
 	bot.AddCommand(commands.UndoCommandData, commands.NewUndoCommand(activityRepo))
+	bot.AddCommand(commands.ChartCommandData, commands.NewChartCommand(activityRepo, userRepo))
 
 	log.Println("Logging in")
 

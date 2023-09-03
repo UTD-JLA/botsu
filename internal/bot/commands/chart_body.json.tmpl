@@ -1,0 +1,56 @@
+{
+  "version": "2",
+  "backgroundColor": "#232428",
+  "width": 500,
+  "height": 300,
+  "devicePixelRatio": 1,
+  "format": "png",
+  "chart": {
+    "type": "bar",
+    "data": {
+      "labels": {{.Labels}},
+      "datasets": [
+        {
+          "data": {{.Values}},
+          "backgroundColor": {{.Color}}
+        }
+      ]
+    },
+    "options": {
+      "legend": {
+        "display": false
+      },
+      "layout": {
+        "padding": {
+          "left": 10,
+          "right": 10,
+          "top": 30,
+          "bottom": 30
+        }
+      },
+      "scales": {
+        "xAxes": [
+          {
+            "ticks": {
+              "fontColor": "#9e9e9e"
+            },
+            "gridLines": {
+              "display": false
+            }
+          }
+        ],
+        "yAxes": [
+          {
+            "ticks": {
+              "fontColor": "#9e9e9e"
+            },
+            "gridLines": {
+              "color": "#2B2D31",
+              "zeroLineColor": "#9e9e9e"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

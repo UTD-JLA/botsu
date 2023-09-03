@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	orderedmap "github.com/UTD-JLA/botsu/pkg/ordered_map"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,6 +51,63 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 		Scan(&activity.ID)
 
 	return err
+}
+
+// Returns map of day (YYYY-MM-DD) to total duration
+// filling in missing days with 0 (string formatted according to user's timezone)
+func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, userID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
+	// day should be truncated to a string `YYYY-MM-DD` in the user's timezone
+	query := `
+		SELECT
+			to_char(date_series.day, 'YYYY-MM-DD') AS day,
+			COALESCE(SUM(duration), 0) AS total_duration
+		FROM (
+			SELECT
+				generate_series(
+					$2::date,
+					$3::date,
+					interval '1 day'
+				) AS day
+		) AS date_series
+		LEFT JOIN users u ON u.id = $1
+		LEFT JOIN activities
+			ON date_series.day = date_trunc('day', activities.date at time zone COALESCE(u.timezone, 'UTC'))
+			AND activities.user_id = $1
+			AND activities.deleted_at IS NULL
+		GROUP BY day
+		ORDER BY day ASC
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, query, userID, start, end)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	durations := orderedmap.NewWithCapacity[time.Duration](int(end.Sub(start).Hours()/24) + 1)
+
+	for rows.Next() {
+		var date string
+		var duration time.Duration
+
+		if err := rows.Scan(&date, &duration); err != nil {
+			return nil, err
+		}
+
+		durations.Set(date, duration)
+	}
+
+	return durations, nil
 }
 
 func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID string) (*Activity, error) {
