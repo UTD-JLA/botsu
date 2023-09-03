@@ -53,6 +53,55 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 	return err
 }
 
+func (r *ActivityRepository) GetTotalByUserIDGroupByVideoChannel(ctx context.Context, userID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
+	query := `
+		SELECT
+			COALESCE(SUM(duration), 0) AS total_duration,
+			meta->>'channel_handle' AS channel_handle
+		FROM activities
+		WHERE user_id = $1
+		AND media_type = 'video'
+		AND meta->>'platform' = 'youtube'
+		AND meta->>'channel_handle' IS NOT NULL
+		AND date >= $2
+		AND date <= $3
+		AND deleted_at IS NULL
+		GROUP BY meta->>'channel_handle'
+		ORDER BY total_duration DESC
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, query, userID, start, end)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	channels := orderedmap.New[time.Duration]()
+
+	for rows.Next() {
+		var channel string
+		var duration time.Duration
+
+		if err := rows.Scan(&duration, &channel); err != nil {
+			return nil, err
+		}
+
+		channels.Set(channel, duration)
+	}
+
+	return channels, nil
+}
+
 // Returns map of day (YYYY-MM-DD) to total duration
 // filling in missing days with 0 (string formatted according to user's timezone)
 func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, userID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {

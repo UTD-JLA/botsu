@@ -24,7 +24,18 @@ import (
 var ChartCommandData = &discordgo.ApplicationCommand{
 	Name:        "chart",
 	Description: "View a chart of your activity",
-	Options:     []*discordgo.ApplicationCommandOption{},
+	Options: []*discordgo.ApplicationCommandOption{
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "daily-duration",
+			Description: "View a chart of your daily activity duration",
+		},
+		{
+			Type:        discordgo.ApplicationCommandOptionSubCommand,
+			Name:        "youtube-channel",
+			Description: "View a chart of your YouTube activity by channel",
+		},
+	},
 }
 
 type ChartCommand struct {
@@ -43,14 +54,24 @@ var quickChartURL = url.URL{
 }
 
 //go:embed chart_body.json.tmpl
-var bodyTemplateFile string
-var bodyTemplate = template.Must(template.New("body").Parse(bodyTemplateFile))
+var barBodyTemplateFile string
 
-type body struct {
+//go:embed chart_body_channel_pie.json.tmpl
+var channelPieBodyTemplateFile string
+
+var barBodyTemplate = template.Must(template.New("body").Parse(barBodyTemplateFile))
+var channelPieBodyTemplate = template.Must(template.New("body").Parse(channelPieBodyTemplateFile))
+
+type barRequestBody struct {
 	Values      string
 	Labels      string
 	Color       string
 	Annotations string
+}
+
+type pieRequestBody struct {
+	Values string
+	Labels string
 }
 
 type response struct {
@@ -63,13 +84,13 @@ func colorAsHex(c color.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
-func getQuickChartBody(xValues []string, yValues []float64) bytes.Buffer {
+func getQuickChartBarBody(xValues []string, yValues []float64) bytes.Buffer {
 	buffer := bytes.Buffer{}
 
 	values, _ := json.Marshal(yValues)
 	labels, _ := json.Marshal(xValues)
 
-	bodyTemplate.Execute(&buffer, body{
+	barBodyTemplate.Execute(&buffer, barRequestBody{
 		Values:      string(values),
 		Labels:      string(labels),
 		Color:       fmt.Sprintf("\"%s\"", colorAsHex(discordutil.ColorSecondary)),
@@ -80,6 +101,92 @@ func getQuickChartBody(xValues []string, yValues []float64) bytes.Buffer {
 	json.Compact(&comactBuffer, buffer.Bytes())
 
 	return comactBuffer
+}
+
+func getQuickChartChannelPieBody(labels []string, values []float64) bytes.Buffer {
+	buffer := bytes.Buffer{}
+
+	valuesJSON, _ := json.Marshal(values)
+	labelsJSON, _ := json.Marshal(labels)
+
+	channelPieBodyTemplate.Execute(&buffer, pieRequestBody{
+		Values: string(valuesJSON),
+		Labels: string(labelsJSON),
+	})
+
+	comactBuffer := bytes.Buffer{}
+	json.Compact(&comactBuffer, buffer.Bytes())
+
+	return comactBuffer
+}
+
+func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *users.User, start, end carbon.Carbon) error {
+	channels, err := c.ar.GetTotalByUserIDGroupByVideoChannel(ctx.ResponseContext(), user.ID, start.ToStdTime(), end.ToStdTime())
+
+	if err != nil {
+		return err
+	}
+
+	totalMinutes := 0.0
+	highestMinutes := 0.0
+	highestChannel := "N/A"
+
+	values := make([]float64, 0, channels.Len())
+
+	for _, k := range channels.Keys() {
+		v, _ := channels.Get(k)
+		totalMinutes += v.Minutes()
+		if v.Minutes() > highestMinutes {
+			highestMinutes = v.Minutes()
+			highestChannel = k
+		}
+		values = append(values, math.Round(v.Minutes()))
+	}
+
+	reqBody := getQuickChartChannelPieBody(channels.Keys(), values)
+
+	req := http.Request{
+		Method: http.MethodPost,
+		URL:    &quickChartURL,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body: io.NopCloser(&reqBody),
+	}
+
+	resp, err := http.DefaultClient.Do(&req)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	var quickChartResponse response
+	err = json.NewDecoder(resp.Body).Decode(&quickChartResponse)
+
+	if err != nil {
+		return err
+	}
+
+	if !quickChartResponse.Success {
+		return errors.New("failed to generate chart")
+	}
+
+	description := fmt.Sprintf("Here are your top channels since <t:%d>", start.Timestamp())
+
+	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+		Embeds: []*discordgo.MessageEmbed{
+			discordutil.NewEmbedBuilder().
+				SetTitle("Top YouTube Channels").
+				SetDescription(description).
+				SetColor(discordutil.ColorPrimary).
+				SetImage(quickChartResponse.Url).
+				AddField("Total", fmt.Sprintf("%.0f minutes", math.Round(totalMinutes)), true).
+				AddField("Most Watched", fmt.Sprintf("%s (%.0f minutes)", highestChannel, math.Round(highestMinutes)), true).
+				Build(),
+		},
+	})
 }
 
 func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
@@ -98,6 +205,12 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 
 	start := carbon.Now(timezone).SubDays(6).StartOfDay()
 	end := carbon.Now(timezone).EndOfDay()
+
+	subcommand := ctx.Options()[0].Name
+
+	if subcommand == "youtube-channel" {
+		return c.handleYoutubeChannel(ctx, user, start, end)
+	}
 
 	dailyDurations, err := c.ar.GetTotalByUserIDGroupedByDay(
 		ctx.ResponseContext(),
@@ -128,7 +241,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 
 	avgMinutes := totalMinutes / float64(dailyDurations.Len())
 
-	reqBody := getQuickChartBody(dailyDurations.Keys(), values)
+	reqBody := getQuickChartBarBody(dailyDurations.Keys(), values)
 	req := http.Request{
 		Method: http.MethodPost,
 		URL:    &quickChartURL,

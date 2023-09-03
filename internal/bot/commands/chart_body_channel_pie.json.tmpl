@@ -1,0 +1,40 @@
+{
+  "version": "2",
+  "backgroundColor": "#232428",
+  "width": 600,
+  "height": 500,
+  "devicePixelRatio": 1,
+  "format": "png",
+  "chart": {
+    "type": "pie",
+    "data": {
+      "labels": {{.Labels}},
+      "datasets": [
+        {
+          "data": {{.Values}}
+        }
+      ]
+    },
+    "options": {
+      "plugins": {
+        "datalabels": {
+          "display": true,
+          "align": "bottom",
+          "backgroundColor": "#ccc",
+          "borderRadius": 3,
+          "font": {
+            "size": 18
+          }
+        }
+      },
+      "layout": {
+        "padding": {
+          "left": 20,
+          "right": 20,
+          "top": 20,
+          "bottom": 20
+        }
+      }
+    }
+  }
+}
