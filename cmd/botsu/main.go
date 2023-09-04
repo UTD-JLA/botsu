@@ -11,8 +11,8 @@ import (
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
+	"github.com/UTD-JLA/botsu/internal/data/anime"
 	"github.com/UTD-JLA/botsu/internal/users"
-	"github.com/UTD-JLA/botsu/pkg/aodb"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -34,21 +34,50 @@ func main() {
 
 	log.Println("Reading anime database file")
 
-	err = aodb.ReadDatabaseFile(config.AodbPath)
+	dataChan := make(chan []*anime.AniDBEntry, 1)
+	aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
+
+	go func() {
+		data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
+
+		if err != nil {
+			panic(err)
+		}
+
+		dataChan <- data
+	}()
+
+	go func() {
+		aodb, err := anime.ReadAODBFile(config.AoDBPath)
+
+		if err != nil {
+			panic(err)
+		}
+
+		aodbChan <- aodb
+	}()
+
+	mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
+	joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
+
+	searcher := anime.NewAnimeSearcher(joined)
+
+	// check if index exists
+	if _, err = os.Stat("anime-index.bluge"); err != nil {
+		log.Println("Creating index")
+		err = searcher.CreateIndex("anime-index.bluge")
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	log.Println("Loading index")
+	_, err = searcher.LoadIndex("anime-index.bluge")
 
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	log.Println("Creating index")
-
-	err = aodb.CreateIndex()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	bot := bot.NewBot()
 
 	log.Println("Connecting to database")
 
@@ -67,7 +96,9 @@ func main() {
 	activityRepo := activities.NewActivityRepository(pool)
 	userRepo := users.NewUserRepository(pool)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo))
+	bot := bot.NewBot()
+
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, searcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo))

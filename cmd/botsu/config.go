@@ -9,9 +9,10 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig `toml:"database"`
-	AodbPath string         `toml:"aodb_path"`
-	Token    string         `toml:"token"`
+	Database      DatabaseConfig `toml:"database"`
+	AoDBPath      string         `toml:"aodb_path"`
+	AniDBDumpPath string         `toml:"anidb_dump_path"`
+	Token         string         `toml:"token"`
 }
 
 type DatabaseConfig struct {

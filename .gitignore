@@ -1,3 +1,4 @@
 config.toml
-*.bleve
+*.bluge
 *.json
+*.dat

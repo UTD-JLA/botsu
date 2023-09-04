@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
+	"github.com/UTD-JLA/botsu/internal/data/anime"
 	"github.com/UTD-JLA/botsu/internal/users"
-	"github.com/UTD-JLA/botsu/pkg/aodb"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 
@@ -276,22 +275,24 @@ var LogCommandData = &discordgo.ApplicationCommand{
 }
 
 type LogCommand struct {
-	activityRepo *activities.ActivityRepository
-	userRepo     *users.UserRepository
-	ytClient     youtube.Client
+	activityRepo  *activities.ActivityRepository
+	userRepo      *users.UserRepository
+	animeSearcher *anime.AnimeSearcher
+	ytClient      youtube.Client
 }
 
-func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository) *LogCommand {
+func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository, as *anime.AnimeSearcher) *LogCommand {
 	return &LogCommand{
-		activityRepo: ar,
-		userRepo:     ur,
-		ytClient:     youtube.Client{},
+		activityRepo:  ar,
+		userRepo:      ur,
+		animeSearcher: as,
+		ytClient:      youtube.Client{},
 	}
 }
 
 func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 	if ctx.IsAutocomplete() {
-		return c.handleAutocomplete(ctx.Session(), ctx.Interaction())
+		return c.handleAutocomplete(ctx.ResponseContext(), ctx.Session(), ctx.Interaction())
 	}
 
 	subcommand := ctx.Data().Options[0]
@@ -314,7 +315,7 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 }
 
-func (c *LogCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	data := i.ApplicationCommandData()
 	focuedOption := discordutil.GetFocusedOption(data.Options[0].Options)
 
@@ -327,7 +328,7 @@ func (c *LogCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.Inter
 	}
 
 	input := focuedOption.StringValue()
-	results, err := createAutocompleteResult(input)
+	results, err := c.createAutocompleteResult(ctx, input)
 
 	if err != nil {
 		return err
@@ -400,19 +401,27 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 	var namedSources map[string]string
 
 	if isAutocompletedEntry(nameInput) {
-		anime, err := resolveAnimeFromAutocomplete(nameInput)
+		anime, titleField, err := c.resolveAnimeFromAutocomplete(nameInput)
 		if err != nil {
 			return err
 		}
 
-		activity.Name = anime.Title
+		activity.Name = anime.PrimaryTitle
+
+		if titleField == "jp" {
+			activity.Name = anime.JapaneseOfficialTitle
+		} else if titleField == "en" {
+			activity.Name = anime.EnglishOfficialTitle
+		} else if titleField == "x-jat" {
+			activity.Name = anime.XJatOfficialTitle
+		}
+
 		thumbnail = anime.Thumbnail
 		activity.Meta = map[string]interface{}{
 			"episodes_watched": episodeCount,
 			"episode_length":   episodeDuration,
 			"sources":          anime.Sources,
-			"title":            anime.Title,
-			"synonyms":         anime.Synonyms,
+			"title":            anime.PrimaryTitle,
 			"tags":             anime.Tags,
 		}
 		namedSources = getNamedSources(anime.Sources)
@@ -796,6 +805,72 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 	})
 }
 
+func (c *LogCommand) createAutocompleteResult(ctx context.Context, input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
+	results, err := c.animeSearcher.Search(ctx, input, 25)
+
+	if err != nil {
+		return
+	}
+
+	choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for i, result := range results {
+		if i >= 25 {
+			break
+		}
+
+		var title string
+		var fieldID string
+
+		switch result.Field {
+		case anime.SearchFieldEnglishTitle:
+			title = result.Anime.EnglishOfficialTitle
+			fieldID = "en"
+		case anime.SearchFieldJapaneseTitle:
+			title = result.Anime.JapaneseOfficialTitle
+			fieldID = "jp"
+		case anime.SearchFieldXJatTitle:
+			title = result.Anime.XJatOfficialTitle
+			fieldID = "x-jat"
+		default:
+			title = result.Anime.PrimaryTitle
+			fieldID = "primary"
+		}
+
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  truncateLongString(title, 100),
+			Value: fmt.Sprintf("${%s:%s}", result.Anime.ID, fieldID),
+		})
+	}
+
+	return
+}
+
+func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, string, error) {
+	if !isAutocompletedEntry(input) {
+		return nil, "", errors.New("invalid input")
+	}
+
+	idAndField := input[2 : len(input)-1]
+
+	fmt.Println(idAndField)
+
+	parts := strings.Split(idAndField, ":")
+	if len(parts) != 2 {
+		return nil, "", errors.New("invalid input")
+	}
+
+	id, field := parts[0], parts[1]
+
+	anime, err := c.animeSearcher.GetAnime(id)
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	return anime, field, nil
+}
+
 func getNamedSources(sources []string) map[string]string {
 	result := make(map[string]string)
 	for _, source := range sources {
@@ -826,52 +901,8 @@ func truncateLongString(s string, maxLen int) string {
 	return s
 }
 
-func createAutocompleteResult(input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
-	results, err := aodb.Search(input)
-
-	if err != nil {
-		return
-	}
-
-	choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
-
-	for i, result := range results {
-		if i >= 25 {
-			break
-		}
-
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  truncateLongString(result.Anime.Title, 100),
-			Value: fmt.Sprintf("${%d}", result.Index),
-		})
-	}
-
-	return
-}
-
 func isAutocompletedEntry(input string) bool {
 	return len(input) > 0 && strings.HasPrefix(input, "${") && strings.HasSuffix(input, "}")
-}
-
-func resolveAnimeFromAutocomplete(input string) (*aodb.Anime, error) {
-	if !isAutocompletedEntry(input) {
-		return nil, errors.New("invalid input")
-	}
-
-	indexStr := input[2 : len(input)-1]
-	index, err := strconv.Atoi(indexStr)
-
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := aodb.GetEntry(index)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
 }
 
 func removeTimeParameter(urlString string) (string, error) {
