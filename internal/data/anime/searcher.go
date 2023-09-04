@@ -99,8 +99,6 @@ func (s *AnimeSearcher) Search(ctx context.Context, queryStr string, limit int) 
 		return nil, ErrReaderNotInitialized
 	}
 
-	fmt.Println("Searching for:", queryStr)
-
 	// search all fields
 	ptQuery := bluge.NewMatchQuery(queryStr).
 		SetField(SearchFieldPrimaryTitle)

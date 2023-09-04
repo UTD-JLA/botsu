@@ -853,8 +853,6 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 
 	idAndField := input[2 : len(input)-1]
 
-	fmt.Println(idAndField)
-
 	parts := strings.Split(idAndField, ":")
 	if len(parts) != 2 {
 		return nil, "", errors.New("invalid input")
