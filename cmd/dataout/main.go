@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"os"
@@ -63,35 +62,5 @@ func main() {
 
 	if err != nil {
 		panic(err)
-	}
-
-	// TESTING
-	searcher := anime.NewAnimeSearcher(joined)
-	_, err = searcher.LoadIndex("test")
-
-	if err != nil {
-		panic(err)
-	}
-
-	results, err := searcher.Search(context.Background(), "love live", 25)
-
-	if err != nil {
-		panic(err)
-	}
-
-	for _, result := range results {
-		displayTitle := result.Anime.PrimaryTitle
-
-		switch result.Field {
-		case "japaneseOfficialTitle":
-			displayTitle = result.Anime.JapaneseOfficialTitle
-		case "xJatOfficialTitle":
-			displayTitle = result.Anime.XJatOfficialTitle
-		case "englishOfficialTitle":
-			displayTitle = result.Anime.EnglishOfficialTitle
-		}
-
-		println(displayTitle)
-		println(result.Anime.ID, result.Field, result.Score)
 	}
 }
