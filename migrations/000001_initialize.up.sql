@@ -43,6 +43,9 @@ CREATE INDEX activities_meta_index ON activities USING GIN (meta);
 CREATE FUNCTION create_guild_member_on_activity_insert()
 RETURNS TRIGGER AS $$
 BEGIN
+    INSERT INTO users (id) VALUES (NEW.user_id)
+    ON CONFLICT DO NOTHING;
+
     IF NEW.guild_id IS NOT NULL THEN
         INSERT INTO guilds (id) VALUES (NEW.guild_id)
         ON CONFLICT DO NOTHING;
@@ -52,10 +55,7 @@ BEGIN
         ON CONFLICT (guild_id, user_id) DO UPDATE
         SET last_seen_at = CURRENT_TIMESTAMP;
     END IF;
-
-    INSERT INTO users (id) VALUES (NEW.user_id)
-    ON CONFLICT DO NOTHING;
-
+    
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
