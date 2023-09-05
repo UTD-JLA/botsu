@@ -268,6 +268,68 @@ func (r *ActivityRepository) GetByID(ctx context.Context, id uint64, guildID str
 	return &activity, nil
 }
 
+func (r *ActivityRepository) GetAllByUserID(ctx context.Context, userID, guildID string) ([]*Activity, error) {
+	query := `
+		SELECT activities.id,
+			   user_id,
+			   guild_id,
+			   name,
+			   primary_type,
+			   media_type,
+			   duration,
+			   date at time zone COALESCE(u.timezone, g.timezone, 'UTC'),
+			   created_at,
+			   deleted_at,
+			   meta
+		FROM activities
+		LEFT JOIN users u ON activities.user_id = u.id
+		LEFT JOIN guilds g ON activities.guild_id = $2
+		WHERE activities.user_id = $1
+		AND deleted_at IS NULL
+		ORDER BY date DESC
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, query, userID, guildID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	activities := make([]*Activity, 0)
+
+	for rows.Next() {
+		var activity Activity
+		if err := rows.Scan(
+			&activity.ID,
+			&activity.UserID,
+			&activity.GuildID,
+			&activity.Name,
+			&activity.PrimaryType,
+			&activity.MediaType,
+			&activity.Duration,
+			&activity.Date,
+			&activity.CreatedAt,
+			&activity.DeletedAt,
+			&activity.Meta,
+		); err != nil {
+			return nil, err
+		}
+		activities = append(activities, &activity)
+	}
+
+	return activities, nil
+}
+
 func (r *ActivityRepository) PageByUserID(ctx context.Context, userID, guildID string, limit, offset int) (*UserActivityPage, error) {
 	query := `
 		SELECT activities.id,

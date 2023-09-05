@@ -18,17 +18,17 @@ const (
 )
 
 type Activity struct {
-	ID          uint64
-	UserID      string
-	GuildID     *string
-	Name        string
-	PrimaryType string
-	MediaType   *string
-	Duration    time.Duration
-	Date        time.Time
-	Meta        interface{}
-	CreatedAt   time.Time
-	DeletedAt   *time.Time
+	ID          uint64        `json:"id"`
+	UserID      string        `json:"user_id"`
+	GuildID     *string       `json:"guild_id"`
+	Name        string        `json:"name"`
+	PrimaryType string        `json:"primary_type"`
+	MediaType   *string       `json:"media_type"`
+	Duration    time.Duration `json:"duration"`
+	Date        time.Time     `json:"date"`
+	Meta        interface{}   `json:"meta"`
+	CreatedAt   time.Time     `json:"created_at"`
+	DeletedAt   *time.Time    `json:"deleted_at"`
 }
 
 func NewActivity() *Activity {
