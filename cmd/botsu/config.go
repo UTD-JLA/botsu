@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Database      DatabaseConfig `toml:"database"`
-	AoDBPath      string         `toml:"aodb_path"`
-	AniDBDumpPath string         `toml:"anidb_dump_path"`
-	Token         string         `toml:"token"`
+	Database         DatabaseConfig `toml:"database"`
+	AoDBPath         string         `toml:"aodb_path"`
+	AniDBDumpPath    string         `toml:"anidb_dump_path"`
+	Token            string         `toml:"token"`
+	UseMembersIntent bool           `toml:"use_members_intent"`
 }
 
 type DatabaseConfig struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -16,11 +17,13 @@ type Bot struct {
 	commands        CommandCollection
 	createdCommands []*discordgo.ApplicationCommand
 	destroyOnClose  bool
+	guildRepo       *guilds.GuildRepository
 }
 
-func NewBot() *Bot {
+func NewBot(guildRepo *guilds.GuildRepository) *Bot {
 	return &Bot{
-		commands: NewCommandCollection(),
+		commands:  NewCommandCollection(),
+		guildRepo: guildRepo,
 	}
 }
 
@@ -48,6 +51,13 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 	}
 }
 
+func (b *Bot) onMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	err := b.guildRepo.RemoveMembers(context.Background(), m.GuildID, []string{m.User.ID})
+	if err != nil {
+		log.Println("Failed to delete guild member", err)
+	}
+}
+
 func (b *Bot) SetDestroyCommandsOnClose(destroy bool) {
 	b.destroyOnClose = destroy
 }
@@ -56,7 +66,7 @@ func (b *Bot) AddCommand(data *discordgo.ApplicationCommand, cmd CommandHandler)
 	b.commands.Add(data, cmd)
 }
 
-func (b *Bot) Login(token string) error {
+func (b *Bot) Login(token string, intent discordgo.Intent) error {
 	s, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return err
@@ -64,6 +74,9 @@ func (b *Bot) Login(token string) error {
 
 	s.AddHandler(b.onReady)
 	s.AddHandler(b.onInteractionCreate)
+	s.AddHandler(b.onMemberRemove)
+
+	s.Identify.Intents = intent
 
 	err = s.Open()
 	if err != nil {

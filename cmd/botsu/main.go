@@ -14,6 +14,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/data/anime"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
+	"github.com/bwmarrin/discordgo"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -118,7 +119,7 @@ func main() {
 	userRepo := users.NewUserRepository(pool)
 	guildRepo := guilds.NewGuildRepository(pool)
 
-	bot := bot.NewBot()
+	bot := bot.NewBot(guildRepo)
 
 	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
@@ -131,7 +132,13 @@ func main() {
 
 	log.Println("Logging in")
 
-	err = bot.Login(config.Token)
+	intents := discordgo.IntentsNone
+
+	if config.UseMembersIntent {
+		intents = discordgo.IntentsGuildMembers
+	}
+
+	err = bot.Login(config.Token, intents)
 
 	if err != nil {
 		log.Fatal(err)
