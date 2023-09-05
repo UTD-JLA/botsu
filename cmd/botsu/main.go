@@ -15,10 +15,16 @@ import (
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/source/github"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var configPath = flag.String("config", "config.toml", "Path to config file")
+var migrationSource = flag.String("migrations", "", "Path to migrations")
 
 func main() {
 	flag.Parse()
@@ -82,6 +88,24 @@ func main() {
 
 	log.Println("Connecting to database")
 
+	if *migrationSource != "" {
+		log.Println("Running migrations")
+
+		m, err := migrate.New(
+			*migrationSource,
+			config.Database.ConnectionString()+"?sslmode=disable")
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = m.Up()
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	pool, err := pgxpool.New(context.Background(), config.Database.ConnectionString())
 
 	if err != nil {
@@ -89,10 +113,6 @@ func main() {
 	}
 
 	defer pool.Close()
-
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	activityRepo := activities.NewActivityRepository(pool)
 	userRepo := users.NewUserRepository(pool)
