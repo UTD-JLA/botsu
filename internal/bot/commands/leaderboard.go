@@ -9,11 +9,13 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
+	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-module/carbon/v2"
+	"github.com/jackc/pgx/v5"
 )
 
 var LeaderboardCommandData = &discordgo.ApplicationCommand{
@@ -71,10 +73,11 @@ var LeaderboardCommandData = &discordgo.ApplicationCommand{
 type LeaderboardCommand struct {
 	r *activities.ActivityRepository
 	u *users.UserRepository
+	g *guilds.GuildRepository
 }
 
-func NewLeaderboardCommand(r *activities.ActivityRepository, u *users.UserRepository) *LeaderboardCommand {
-	return &LeaderboardCommand{r: r, u: u}
+func NewLeaderboardCommand(r *activities.ActivityRepository, u *users.UserRepository, g *guilds.GuildRepository) *LeaderboardCommand {
+	return &LeaderboardCommand{r: r, u: u, g: g}
 }
 
 func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
@@ -111,8 +114,9 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 	case "custom":
 		options := i.ApplicationCommandData().Options[0].Options
 		user, err := c.u.FindByID(ctx.Context(), i.Member.User.ID)
+		guildID := i.GuildID
 
-		if err != nil {
+		if err != nil && err != pgx.ErrNoRows {
 			return err
 		}
 
@@ -120,6 +124,16 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 
 		if user != nil && user.Timezone != nil {
 			timezone = *user.Timezone
+		} else if guildID != "" {
+			guild, err := c.g.FindByID(ctx.ResponseContext(), guildID)
+
+			if err != nil && err != pgx.ErrNoRows {
+				return err
+			}
+
+			if guild != nil && guild.Timezone != nil {
+				timezone = *guild.Timezone
+			}
 		}
 
 		startString := discordutil.GetRequiredStringOption(options, "start")
@@ -221,11 +235,6 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 
 	deadMembers := make([]string, 0, len(topMembers))
 
-	// if isRollingLeaderboard {
-	// 	embed.SetFooter("Next reset", "")
-	// 	embed.SetTimestamp(end)
-	// }
-
 	for x, m := range topMembers {
 		member, ok := foundMembers[m.UserID]
 		displayName := m.UserID
@@ -247,18 +256,15 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		embed.AddField(fmt.Sprintf("%d. %s", x+1, displayName), m.TotalDuration.String(), false)
 	}
 
+	err = c.g.RemoveMembers(context.Background(), i.GuildID, deadMembers)
+
+	if err != nil {
+		log.Printf("Error removing dead members: %v\n", err)
+	}
+
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 	})
-
-	go func() {
-		for _, m := range deadMembers {
-			err := c.u.RemoveActiveGuild(context.Background(), m, i.GuildID)
-			if err != nil {
-				log.Printf("Error removing dead member %s: %v\n", m, err)
-			}
-		}
-	}()
 
 	return err
 }

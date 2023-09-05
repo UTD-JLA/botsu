@@ -15,10 +15,12 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
+	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-module/carbon/v2"
+	"github.com/jackc/pgx/v5"
 )
 
 var ChartCommandData = &discordgo.ApplicationCommand{
@@ -41,10 +43,11 @@ var ChartCommandData = &discordgo.ApplicationCommand{
 type ChartCommand struct {
 	ar *activities.ActivityRepository
 	ur *users.UserRepository
+	gr *guilds.GuildRepository
 }
 
-func NewChartCommand(ar *activities.ActivityRepository, ur *users.UserRepository) *ChartCommand {
-	return &ChartCommand{ar: ar, ur: ur}
+func NewChartCommand(ar *activities.ActivityRepository, ur *users.UserRepository, gr *guilds.GuildRepository) *ChartCommand {
+	return &ChartCommand{ar: ar, ur: ur, gr: gr}
 }
 
 var quickChartURL = url.URL{
@@ -191,16 +194,27 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
-	user, err := c.ur.FindOrCreate(ctx.ResponseContext(), userID)
+	guildID := ctx.Interaction().GuildID
+	user, err := c.ur.FindByID(ctx.ResponseContext(), userID)
 
-	if err != nil {
+	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
 
 	timezone := carbon.UTC
 
-	if user.Timezone != nil {
+	if user != nil && user.Timezone != nil {
 		timezone = *user.Timezone
+	} else if guildID != "" {
+		guild, err := c.gr.FindByID(ctx.ResponseContext(), guildID)
+
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+
+		if guild != nil && guild.Timezone != nil {
+			timezone = *guild.Timezone
+		}
 	}
 
 	start := carbon.Now(timezone).SubDays(6).StartOfDay()
@@ -215,6 +229,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	dailyDurations, err := c.ar.GetTotalByUserIDGroupedByDay(
 		ctx.ResponseContext(),
 		user.ID,
+		ctx.Interaction().GuildID,
 		start.ToStdTime(),
 		end.ToStdTime(),
 	)

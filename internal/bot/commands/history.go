@@ -46,7 +46,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		user = discordutil.GetInteractionUser(i)
 	}
 
-	page, err := c.r.PageByUserID(ctx.Context(), user.ID, 6, offset)
+	page, err := c.r.PageByUserID(ctx.Context(), user.ID, ctx.Interaction().GuildID, 6, offset)
 
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 
 			if ci.MessageComponentData().CustomID == "history_previous" {
 				offset -= 6
-				page, err = c.r.PageByUserID(ciContext, user.ID, 6, offset)
+				page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
 
 				if err != nil {
 					return err
@@ -154,7 +154,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 				}
 			} else if ci.MessageComponentData().CustomID == "history_next" {
 				offset += 6
-				page, err = c.r.PageByUserID(ciContext, user.ID, 6, offset)
+				page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
 
 				if err != nil {
 					return err

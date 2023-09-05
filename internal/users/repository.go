@@ -29,14 +29,13 @@ func (r *UserRepository) Create(ctx context.Context, user *User) error {
 
 	err = conn.QueryRow(
 		ctx,
-		`INSERT INTO users (id, active_guilds, timezone)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (id) DO UPDATE SET active_guilds = $2, timezone = $3
+		`INSERT INTO users (id, timezone)
+			VALUES ($1, $2)
+			ON CONFLICT (id) DO UPDATE SET timezone = $2
 			RETURNING id;`,
 		user.ID,
-		user.ActiveGuilds,
-		user.Timezone).
-		Scan(&user.ID)
+		user.Timezone,
+	).Scan(&user.ID)
 
 	if err != nil {
 		return err
@@ -57,10 +56,10 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*User, error)
 
 	var user User
 	err = conn.QueryRow(ctx,
-		`SELECT id, active_guilds, timezone
+		`SELECT id, timezone
 		FROM users
 		WHERE id = $1;`,
-		id).Scan(&user.ID, &user.ActiveGuilds, &user.Timezone)
+		id).Scan(&user.ID, &user.Timezone)
 
 	if err != nil {
 		return nil, err
@@ -114,91 +113,6 @@ func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone s
 	if user != nil {
 		user.Timezone = &timezone
 	}
-
-	return nil
-}
-
-func (r *UserRepository) AppendActiveGuild(ctx context.Context, userId, guildId string) error {
-	conn, err := r.pool.Acquire(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	defer conn.Release()
-
-	_, err = conn.Exec(ctx,
-		`INSERT INTO users (id, active_guilds)
-		VALUES ($1, ARRAY[$2])
-		ON CONFLICT (id) DO UPDATE SET active_guilds = array_append(users.active_guilds, $2);`,
-		userId, guildId)
-
-	if err != nil {
-		return err
-	}
-
-	user := r.getCachedUser(userId)
-
-	if user != nil {
-		user.ActiveGuilds = append(user.ActiveGuilds, guildId)
-	}
-
-	return nil
-}
-
-func (r *UserRepository) RemoveActiveGuild(ctx context.Context, userId, guildId string) error {
-	conn, err := r.pool.Acquire(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	defer conn.Release()
-
-	_, err = conn.Exec(ctx,
-		`UPDATE users
-		SET active_guilds = array_remove(users.active_guilds, $1)
-		WHERE id = $2;`,
-		guildId, userId)
-
-	if err != nil {
-		return err
-	}
-
-	user := r.getCachedUser(userId)
-
-	if user != nil {
-		for i, g := range user.ActiveGuilds {
-			if g == guildId {
-				user.ActiveGuilds = append(user.ActiveGuilds[:i], user.ActiveGuilds[i+1:]...)
-				break
-			}
-		}
-	}
-
-	return nil
-}
-
-func (r *UserRepository) Update(ctx context.Context, user *User) error {
-	conn, err := r.pool.Acquire(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	defer conn.Release()
-
-	_, err = conn.Exec(ctx,
-		`UPDATE users
-		SET active_guilds = $1, timezone = $2
-		WHERE id = $3;`,
-		user.ActiveGuilds, user.Timezone, user.ID)
-
-	if err != nil {
-		return err
-	}
-
-	r.cacheUser(user)
 
 	return nil
 }

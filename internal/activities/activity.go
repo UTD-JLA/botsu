@@ -20,6 +20,7 @@ const (
 type Activity struct {
 	ID          uint64
 	UserID      string
+	GuildID     *string
 	Name        string
 	PrimaryType string
 	MediaType   *string

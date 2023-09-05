@@ -38,10 +38,11 @@ func (r *ActivityRepository) Create(ctx context.Context, activity *Activity) err
 
 	err = conn.QueryRow(
 		ctx,
-		`INSERT INTO activities (user_id, name, primary_type, media_type, duration, date, meta)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO activities (user_id, guild_id, name, primary_type, media_type, duration, date, meta)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			RETURNING id;`,
 		activity.UserID,
+		activity.GuildID,
 		activity.Name,
 		activity.PrimaryType,
 		activity.MediaType,
@@ -104,7 +105,7 @@ func (r *ActivityRepository) GetTotalByUserIDGroupByVideoChannel(ctx context.Con
 
 // Returns map of day (YYYY-MM-DD) to total duration
 // filling in missing days with 0 (string formatted according to user's timezone)
-func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, userID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
+func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, userID, guildID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
 	// day should be truncated to a string `YYYY-MM-DD` in the user's timezone
 	query := `
 		SELECT
@@ -113,14 +114,18 @@ func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, u
 		FROM (
 			SELECT
 				generate_series(
-					$2::date,
 					$3::date,
+					$4::date,
 					interval '1 day'
 				) AS day
 		) AS date_series
 		LEFT JOIN users u ON u.id = $1
+		LEFT JOIN guilds g ON g.id = $2
 		LEFT JOIN activities
-			ON date_series.day = date_trunc('day', activities.date at time zone COALESCE(u.timezone, 'UTC'))
+			ON date_series.day = date_trunc(
+				'day',
+				activities.date at time zone COALESCE(u.timezone, g.timezone, 'UTC')
+			)
 			AND activities.user_id = $1
 			AND activities.deleted_at IS NULL
 		GROUP BY day
@@ -135,7 +140,7 @@ func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, u
 
 	defer conn.Release()
 
-	rows, err := conn.Query(ctx, query, userID, start, end)
+	rows, err := conn.Query(ctx, query, userID, guildID, start, end)
 
 	if err != nil {
 		return nil, err
@@ -159,23 +164,25 @@ func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, u
 	return durations, nil
 }
 
-func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID string) (*Activity, error) {
+func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID, guildID string) (*Activity, error) {
 	query := `
 		SELECT activities.id,
-			   user_id,	
+			   user_id,
+			   guild_id,
 			   name,
 			   primary_type,
 			   media_type,
 			   duration,
-			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   date at time zone COALESCE(u.timezone, g.timezone, 'UTC'),
 			   created_at,
 			   deleted_at,
 			   meta
 		FROM activities
-		INNER JOIN users u ON activities.user_id = u.id
-		WHERE user_id = $1
+		LEFT JOIN users u ON activities.user_id = u.id
+		LEFT JOIN guilds g ON activities.guild_id = $2
+		WHERE activities.user_id = $1
 		AND deleted_at IS NULL
-		ORDER BY created_at DESC
+		ORDER BY date DESC
 		LIMIT 1
 	`
 
@@ -189,9 +196,10 @@ func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID strin
 
 	var activity Activity
 
-	err = conn.QueryRow(ctx, query, userID).Scan(
+	err = conn.QueryRow(ctx, query, userID, guildID).Scan(
 		&activity.ID,
 		&activity.UserID,
+		&activity.GuildID,
 		&activity.Name,
 		&activity.PrimaryType,
 		&activity.MediaType,
@@ -209,20 +217,22 @@ func (r *ActivityRepository) GetLatestByUserID(ctx context.Context, userID strin
 	return &activity, nil
 }
 
-func (r *ActivityRepository) GetByID(ctx context.Context, id uint64) (*Activity, error) {
+func (r *ActivityRepository) GetByID(ctx context.Context, id uint64, guildID string) (*Activity, error) {
 	query := `
 		SELECT activities.id,
 			   user_id,
+			   guild_id,
 			   name,
 			   primary_type,
 			   media_type,
 			   duration,
-			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   date at time zone COALESCE(u.timezone, g.timezone, 'UTC'),
 			   created_at,
 			   deleted_at,
 			   meta
 		FROM activities
-		INNER JOIN users u ON activities.user_id = u.id
+		LEFT JOIN users u ON activities.user_id = u.id
+		LEFT JOIN guilds g ON activities.guild_id = $2
 		WHERE activities.id = $1
 		AND deleted_at IS NULL
 	`
@@ -237,9 +247,10 @@ func (r *ActivityRepository) GetByID(ctx context.Context, id uint64) (*Activity,
 
 	var activity Activity
 
-	err = conn.QueryRow(ctx, query, id).Scan(
+	err = conn.QueryRow(ctx, query, id, guildID).Scan(
 		&activity.ID,
 		&activity.UserID,
+		&activity.GuildID,
 		&activity.Name,
 		&activity.PrimaryType,
 		&activity.MediaType,
@@ -257,27 +268,29 @@ func (r *ActivityRepository) GetByID(ctx context.Context, id uint64) (*Activity,
 	return &activity, nil
 }
 
-func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, limit, offset int) (*UserActivityPage, error) {
+func (r *ActivityRepository) PageByUserID(ctx context.Context, userID, guildID string, limit, offset int) (*UserActivityPage, error) {
 	query := `
 		SELECT activities.id,
 			   user_id,
+			   guild_id,
 			   name,
 			   primary_type,
 			   media_type,
 			   duration,
-			   date at time zone COALESCE(u.timezone, 'UTC'),
+			   date at time zone COALESCE(u.timezone, g.timezone, 'UTC'),
 			   created_at,
 			   deleted_at,
 			   meta,
-			   CEIL(COUNT(*) OVER() / $2::float) AS page_count,
-			   CEIL($3::float / $2::float) + 1 AS page
+			   CEIL(COUNT(*) OVER() / $3::float) AS page_count,
+			   CEIL($4::float / $3::float) + 1 AS page
 		FROM activities
-		INNER JOIN users u ON activities.user_id = u.id
-		WHERE user_id = $1
+		LEFT JOIN users u ON activities.user_id = u.id
+		LEFT JOIN guilds g ON activities.guild_id = $2
+		WHERE activities.user_id = $1
 		AND deleted_at IS NULL
 		ORDER BY date DESC
-		LIMIT $2
-		OFFSET $3
+		LIMIT $3
+		OFFSET $4
 	`
 
 	conn, err := r.pool.Acquire(ctx)
@@ -288,7 +301,7 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 
 	defer conn.Release()
 
-	rows, err := conn.Query(ctx, query, userID, limit, offset)
+	rows, err := conn.Query(ctx, query, userID, guildID, limit, offset)
 
 	if err != nil {
 		return nil, err
@@ -304,6 +317,7 @@ func (r *ActivityRepository) PageByUserID(ctx context.Context, userID string, li
 		if err := rows.Scan(
 			&activity.ID,
 			&activity.UserID,
+			&activity.GuildID,
 			&activity.Name,
 			&activity.PrimaryType,
 			&activity.MediaType,
@@ -352,14 +366,14 @@ func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, 
 	defer conn.Release()
 
 	rows, err := conn.Query(ctx, `
-		SELECT u.id, SUM(a.duration) AS total_duration
-		FROM users u
-		INNER JOIN activities a ON u.id = a.user_id
-		WHERE $1 = ANY(u.active_guilds)
-		AND a.deleted_at IS NULL
+		SELECT m.user_id, COALESCE(SUM(a.duration), 0) AS total_duration
+		FROM guild_members m
+		LEFT JOIN activities a ON m.user_id = a.user_id
+		WHERE m.guild_id = $1
 		AND a.date >= $2
 		AND a.date <= $3
-		GROUP BY u.id
+		AND a.deleted_at IS NULL
+		GROUP BY m.user_id
 		ORDER BY total_duration DESC
 		LIMIT $4
 	`, guildId, start, end, limit)

@@ -12,6 +12,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
 	"github.com/UTD-JLA/botsu/internal/data/anime"
+	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -95,15 +96,17 @@ func main() {
 
 	activityRepo := activities.NewActivityRepository(pool)
 	userRepo := users.NewUserRepository(pool)
+	guildRepo := guilds.NewGuildRepository(pool)
 
 	bot := bot.NewBot()
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, searcher))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
-	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo))
+	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
 	bot.AddCommand(commands.UndoCommandData, commands.NewUndoCommand(activityRepo))
-	bot.AddCommand(commands.ChartCommandData, commands.NewChartCommand(activityRepo, userRepo))
+	bot.AddCommand(commands.ChartCommandData, commands.NewChartCommand(activityRepo, userRepo, guildRepo))
+	bot.AddCommand(commands.GuildConfigCommandData, commands.NewGuildConfigCommand(guildRepo))
 
 	log.Println("Logging in")
 
