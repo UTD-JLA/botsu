@@ -45,6 +45,32 @@ func main() {
 	dataChan := make(chan []*anime.AniDBEntry, 1)
 	aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
 
+	_, err = os.Stat(config.AoDBPath)
+
+	if os.IsNotExist(err) {
+		log.Println("Downloading anime offline database")
+		err = anime.DownloadAnimeOfflineDatabase(config.AoDBPath)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = os.Stat(config.AniDBDumpPath)
+
+	if os.IsNotExist(err) {
+		log.Println("Downloading anidb dump")
+		err = anime.DownloadAniDBDump(config.AniDBDumpPath)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
 		data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
 
@@ -67,7 +93,6 @@ func main() {
 
 	mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
 	joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
-
 	searcher := anime.NewAnimeSearcher(joined)
 
 	// check if index exists
