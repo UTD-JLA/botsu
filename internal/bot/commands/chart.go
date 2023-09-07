@@ -12,12 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"text/template"
+	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
+	orderedmap "github.com/UTD-JLA/botsu/pkg/ordered_map"
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-module/carbon/v2"
 	"github.com/jackc/pgx/v5"
@@ -29,8 +31,22 @@ var ChartCommandData = &discordgo.ApplicationCommand{
 	Options: []*discordgo.ApplicationCommandOption{
 		{
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
-			Name:        "daily-duration",
+			Name:        "duration",
 			Description: "View a chart of your daily activity duration",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "start",
+					Description: "The start date of the chart",
+					Required:    false,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "end",
+					Description: "The end date of the chart",
+					Required:    false,
+				},
+			},
 		},
 		{
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
@@ -224,22 +240,72 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	start := carbon.Now(timezone).SubDays(6).StartOfDay()
 	end := carbon.Now(timezone).EndOfDay()
 
-	subcommand := ctx.Options()[0].Name
+	subcommand := ctx.Options()[0]
+	startInput := discordutil.GetStringOption(subcommand.Options, "start")
+	endInput := discordutil.GetStringOption(subcommand.Options, "end")
+	customTimeframe := startInput != nil || endInput != nil
 
-	if subcommand == "youtube-channel" {
+	if startInput != nil {
+		start = carbon.Parse(*startInput, timezone)
+		if !start.IsValid() {
+			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+				Content: "Invalid start date.",
+			})
+		}
+	}
+
+	if endInput != nil {
+		end = carbon.Parse(*endInput, timezone)
+
+		if !end.IsValid() {
+			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+				Content: "Invalid end date.",
+			})
+		}
+	}
+
+	if subcommand.Name == "youtube-channel" {
 		return c.handleYoutubeChannel(ctx, user, start, end)
 	}
 
-	dailyDurations, err := c.ar.GetTotalByUserIDGroupedByDay(
-		ctx.ResponseContext(),
-		user.ID,
-		ctx.Interaction().GuildID,
-		start.ToStdTime(),
-		end.ToStdTime(),
-	)
+	deltaMonths := end.DiffAbsInMonths(start)
 
-	if err != nil {
-		return err
+	if deltaMonths > 36 {
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "You can only view up to 36 months of activity.",
+		})
+	}
+
+	useMonthGrouping := deltaMonths > 3
+
+	var dailyDurations orderedmap.Map[time.Duration]
+
+	if useMonthGrouping {
+		dailyDurations, err = c.ar.GetTotalByUserIDGroupedByMonth(
+			ctx.ResponseContext(),
+			user.ID,
+			ctx.Interaction().GuildID,
+			start.ToStdTime(),
+			end.ToStdTime(),
+		)
+
+		if err != nil {
+			return err
+		}
+
+	} else {
+		dailyDurations, err = c.ar.GetTotalByUserIDGroupedByDay(
+			ctx.ResponseContext(),
+			user.ID,
+			ctx.Interaction().GuildID,
+			start.ToStdTime(),
+			end.ToStdTime(),
+		)
+
+		if err != nil {
+			return err
+		}
+
 	}
 
 	totalMinutes := 0.0
@@ -289,16 +355,19 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 		return errors.New("failed to generate chart")
 	}
 
+	embed := discordutil.NewEmbedBuilder().
+		SetTitle("Activity History").
+		SetColor(discordutil.ColorPrimary).
+		SetImage(quickChartResponse.Url).
+		AddField("Total", fmt.Sprintf("%.0f minutes", math.Round(totalMinutes)), true).
+		AddField("Average", fmt.Sprintf("%.0f minutes", math.Round(avgMinutes)), true).
+		AddField("Highest", fmt.Sprintf("%.0f minutes (%s)", math.Round(highestMinutes), highestDay), true)
+
+	if customTimeframe {
+		embed.SetDescription(fmt.Sprintf("Here is your activity from <t:%d> to <t:%d>", start.Timestamp(), end.Timestamp()))
+	}
+
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-		Embeds: []*discordgo.MessageEmbed{
-			discordutil.NewEmbedBuilder().
-				SetTitle("Activity History").
-				SetColor(discordutil.ColorPrimary).
-				SetImage(quickChartResponse.Url).
-				AddField("Total", fmt.Sprintf("%.0f minutes", math.Round(totalMinutes)), true).
-				AddField("Average", fmt.Sprintf("%.0f minutes", math.Round(avgMinutes)), true).
-				AddField("Highest", fmt.Sprintf("%.0f minutes (%s)", math.Round(highestMinutes), highestDay), true).
-				Build(),
-		},
+		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 	})
 }

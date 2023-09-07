@@ -103,6 +103,64 @@ func (r *ActivityRepository) GetTotalByUserIDGroupByVideoChannel(ctx context.Con
 	return channels, nil
 }
 
+func (r *ActivityRepository) GetTotalByUserIDGroupedByMonth(ctx context.Context, userID, guildID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
+	query := `
+		SELECT
+			to_char(date_series.month, 'YYYY-MM') AS month,
+			COALESCE(SUM(duration), 0) AS total_duration
+		FROM (
+			SELECT
+				generate_series(
+					$3::date,
+					$4::date,
+					interval '1 month'
+				) AS month
+		) AS date_series
+		LEFT JOIN users u ON u.id = $1
+		LEFT JOIN guilds g ON g.id = $2
+		LEFT JOIN activities
+			ON date_series.month = date_trunc(
+				'month',
+				activities.date at time zone COALESCE(u.timezone, g.timezone, 'UTC')
+			)
+			AND activities.user_id = $1
+			AND activities.deleted_at IS NULL
+		GROUP BY month
+		ORDER BY month ASC
+	`
+
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Release()
+
+	rows, err := conn.Query(ctx, query, userID, guildID, start, end)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	durations := orderedmap.NewWithCapacity[time.Duration](int(end.Sub(start).Hours()/24) + 1)
+
+	for rows.Next() {
+		var date string
+		var duration time.Duration
+
+		if err := rows.Scan(&date, &duration); err != nil {
+			return nil, err
+		}
+
+		durations.Set(date, duration)
+	}
+
+	return durations, nil
+}
+
 // Returns map of day (YYYY-MM-DD) to total duration
 // filling in missing days with 0 (string formatted according to user's timezone)
 func (r *ActivityRepository) GetTotalByUserIDGroupedByDay(ctx context.Context, userID, guildID string, start, end time.Time) (orderedmap.Map[time.Duration], error) {
