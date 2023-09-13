@@ -11,6 +11,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/data/anime"
+	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
@@ -118,11 +119,12 @@ var videoCommandOptions = []*discordgo.ApplicationCommandOption{
 
 var vnCommandOptions = []*discordgo.ApplicationCommandOption{
 	{
-		Name:        "name",
-		Type:        discordgo.ApplicationCommandOptionString,
-		Description: "Title/name of the book read",
-		Required:    true,
-		Options:     []*discordgo.ApplicationCommandOption{},
+		Name:         "name",
+		Type:         discordgo.ApplicationCommandOptionString,
+		Description:  "Title/name of the book read",
+		Required:     true,
+		Autocomplete: true,
+		Options:      []*discordgo.ApplicationCommandOption{},
 	},
 	{
 		Name:        "characters",
@@ -280,14 +282,16 @@ type LogCommand struct {
 	userRepo      *users.UserRepository
 	guildRepo     *guilds.GuildRepository
 	animeSearcher *anime.AnimeSearcher
+	vnSearcher    *vn.VNSearcher
 	ytClient      youtube.Client
 }
 
-func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository, gr *guilds.GuildRepository, as *anime.AnimeSearcher) *LogCommand {
+func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository, gr *guilds.GuildRepository, as *anime.AnimeSearcher, vs *vn.VNSearcher) *LogCommand {
 	return &LogCommand{
 		activityRepo:  ar,
 		userRepo:      ur,
 		animeSearcher: as,
+		vnSearcher:    vs,
 		guildRepo:     gr,
 		ytClient:      youtube.Client{},
 	}
@@ -320,6 +324,7 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 
 func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	data := i.ApplicationCommandData()
+	subcommand := data.Options[0].Name
 	focuedOption := discordutil.GetFocusedOption(data.Options[0].Options)
 
 	if focuedOption == nil {
@@ -330,8 +335,16 @@ func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Sessio
 		return nil
 	}
 
+	var mediaType string
+
+	if subcommand == "anime" {
+		mediaType = activities.ActivityMediaTypeAnime
+	} else if subcommand == "vn" {
+		mediaType = activities.ActivityMediaTypeVisualNovel
+	}
+
 	input := focuedOption.StringValue()
-	results, err := c.createAutocompleteResult(ctx, input)
+	results, err := c.createAutocompleteResult(ctx, mediaType, input)
 
 	if err != nil {
 		return err
@@ -390,6 +403,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 			"sources":          anime.Sources,
 			"title":            anime.PrimaryTitle,
 			"tags":             anime.Tags,
+			"aid":              anime.ID,
 		}
 		namedSources = getNamedSources(anime.Sources)
 	} else {
@@ -627,6 +641,37 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 	readingSpeed := discordutil.GetUintOption(args, "reading-speed")
 	readingSpeedHourly := discordutil.GetUintOption(args, "reading-speed-hourly")
 
+	thumbnail := ""
+
+	if isAutocompletedEntry(activity.Name) {
+		v, titleField, err := c.resolveVNFromAutocomplete(activity.Name)
+		if err != nil {
+			return err
+		}
+
+		if titleField == "jp" {
+			activity.Name = v.JapaneseTitle
+		} else if titleField == "en" {
+			activity.Name = v.EnglishTitle
+		} else if titleField == "romaji" {
+			activity.Name = v.RomajiTitle
+		}
+
+		thumbnail = v.ImageURL()
+		meta := map[string]interface{}{
+			"vndb_id":   v.ID,
+			"thumbnail": v.ImageURL(),
+		}
+
+		if charCount != 0 {
+			meta["characters"] = charCount
+		}
+
+		activity.Meta = meta
+	} else if charCount != 0 {
+		activity.Meta = map[string]interface{}{"characters": charCount}
+	}
+
 	var durationMinutes float64
 
 	if charCount == 0 && duration == nil {
@@ -648,10 +693,6 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
-
-	if charCount != 0 {
-		activity.Meta = map[string]interface{}{"characters": charCount}
-	}
 
 	enteredDate := discordutil.GetStringOption(args, "date")
 	date := time.Now()
@@ -704,6 +745,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		SetTitle("Activity logged!").
 		AddField("Title", activity.Name, false).
 		AddField("Duration", activity.Duration.String(), false).
+		SetThumbnail(thumbnail).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
 		SetTimestamp(activity.Date).
 		SetColor(discordutil.ColorSuccess)
@@ -928,42 +970,68 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 	})
 }
 
-func (c *LogCommand) createAutocompleteResult(ctx context.Context, input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
-	results, err := c.animeSearcher.Search(ctx, input, 25)
-
-	if err != nil {
-		return
-	}
-
+func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
 	choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
 
-	for i, result := range results {
-		if i >= 25 {
-			break
+	if mediaType == activities.ActivityMediaTypeAnime {
+		results, err := c.animeSearcher.Search(ctx, input, 25)
+
+		if err != nil {
+			return nil, err
 		}
 
-		var title string
-		var fieldID string
+		for _, result := range results {
+			var title string
+			var fieldID string
 
-		switch result.Field {
-		case anime.SearchFieldEnglishTitle:
-			title = result.Anime.EnglishOfficialTitle
-			fieldID = "en"
-		case anime.SearchFieldJapaneseTitle:
-			title = result.Anime.JapaneseOfficialTitle
-			fieldID = "jp"
-		case anime.SearchFieldXJatTitle:
-			title = result.Anime.XJatOfficialTitle
-			fieldID = "x-jat"
-		default:
-			title = result.Anime.PrimaryTitle
-			fieldID = "primary"
+			switch result.Field {
+			case anime.SearchFieldEnglishTitle:
+				title = result.Anime.EnglishOfficialTitle
+				fieldID = "en"
+			case anime.SearchFieldJapaneseTitle:
+				title = result.Anime.JapaneseOfficialTitle
+				fieldID = "jp"
+			case anime.SearchFieldXJatTitle:
+				title = result.Anime.XJatOfficialTitle
+				fieldID = "x-jat"
+			default:
+				title = result.Anime.PrimaryTitle
+				fieldID = "primary"
+			}
+
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  truncateLongString(title, 100),
+				Value: fmt.Sprintf("${%s:%s}", result.Anime.ID, fieldID),
+			})
+		}
+	} else if mediaType == activities.ActivityMediaTypeVisualNovel {
+		results, err := c.vnSearcher.Search(ctx, input, 25)
+
+		if err != nil {
+			return nil, err
 		}
 
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  truncateLongString(title, 100),
-			Value: fmt.Sprintf("${%s:%s}", result.Anime.ID, fieldID),
-		})
+		for _, result := range results {
+			var title string
+			var fieldID string
+
+			switch result.Field {
+			case vn.SearchFieldJapaneseTitle:
+				title = result.VN.JapaneseTitle
+				fieldID = "jp"
+			case vn.SearchFieldEnglishTitle:
+				title = result.VN.EnglishTitle
+				fieldID = "en"
+			case vn.SearchFieldRomaji:
+				title = result.VN.RomajiTitle
+				fieldID = "romaji"
+			}
+
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  truncateLongString(title, 100),
+				Value: fmt.Sprintf("${%s:%s}", result.VN.ID, fieldID),
+			})
+		}
 	}
 
 	return
@@ -990,6 +1058,30 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 	}
 
 	return anime, field, nil
+}
+
+func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, string, error) {
+	if !isAutocompletedEntry(input) {
+		return nil, "", errors.New("invalid input")
+	}
+
+	idAndField := input[2 : len(input)-1]
+
+	parts := strings.Split(idAndField, ":")
+
+	if len(parts) != 2 {
+		return nil, "", errors.New("invalid input")
+	}
+
+	id, field := parts[0], parts[1]
+
+	vn, err := c.vnSearcher.GetVN(id)
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	return vn, field, nil
 }
 
 func getNamedSources(sources []string) map[string]string {

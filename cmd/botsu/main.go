@@ -12,6 +12,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
 	"github.com/UTD-JLA/botsu/internal/data/anime"
+	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/bwmarrin/discordgo"
@@ -112,6 +113,34 @@ func main() {
 		log.Fatal(err)
 	}
 
+	titles, err := vn.ReadVNDBTitlesFile("vndb-db-2023-09-07/db/vn_titles")
+
+	if err != nil {
+		panic(err)
+	}
+
+	data, err := vn.ReadVNDBDataFile("vndb-db-2023-09-07/db/vn")
+
+	if err != nil {
+		panic(err)
+	}
+
+	vns := vn.JoinTitlesAndData(titles, data)
+
+	vnSearcher := vn.NewVNSearcher(vns)
+
+	err = vnSearcher.CreateIndex("vndb-index")
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = vnSearcher.LoadIndex("vndb-index")
+
+	if err != nil {
+		panic(err)
+	}
+
 	log.Println("Connecting to database")
 
 	if *migrationSource != "" {
@@ -146,7 +175,7 @@ func main() {
 
 	bot := bot.NewBot(guildRepo)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher, vnSearcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
