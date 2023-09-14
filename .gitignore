@@ -3,3 +3,4 @@ config.toml
 *.json
 *.dat
 vndb-*
+*.exe
