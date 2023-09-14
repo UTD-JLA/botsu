@@ -24,15 +24,18 @@ type DatabaseConfig struct {
 	Database string `toml:"database"`
 }
 
-func (c *DatabaseConfig) ConnectionString() string {
-	connectionUrl := url.URL{
+func (c *DatabaseConfig) ConnectionURL() url.URL {
+	return url.URL{
 		Scheme: "postgres",
 		Host:   c.Host + fmt.Sprintf(":%d", c.Port),
 		User:   url.UserPassword(c.User, c.Password),
 		Path:   c.Database,
 	}
+}
 
-	return connectionUrl.String()
+func (c *DatabaseConfig) ConnectionString() string {
+	u := c.ConnectionURL()
+	return u.String()
 }
 
 func NewConfig() *Config {

@@ -143,12 +143,15 @@ func main() {
 
 	log.Println("Connecting to database")
 
+	migrationURL := config.Database.ConnectionURL()
+	q := migrationURL.Query()
+	q.Add("sslmode", "disable")
+	migrationURL.RawQuery = q.Encode()
+
 	if *migrationSource != "" {
 		log.Println("Running migrations")
 
-		m, err := migrate.New(
-			*migrationSource,
-			config.Database.ConnectionString()+"?sslmode=disable")
+		m, err := migrate.New(*migrationSource, migrationURL.String())
 
 		if err != nil {
 			log.Fatal(err)
