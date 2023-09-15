@@ -1,78 +1,54 @@
 package discordutil
 
 import (
-	"errors"
-	"sync"
-	"time"
+	"context"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 type InteractionFilter func(i *discordgo.InteractionCreate) bool
 
-type MessageComponentCollector struct {
-	ch            chan *discordgo.InteractionCreate
-	session       *discordgo.Session
-	removeHandler func()
-	closedMu      sync.RWMutex
-	closed        bool
-}
+func CollectComponentInteraction(ctx context.Context, s *discordgo.Session, f InteractionFilter) <-chan *discordgo.InteractionCreate {
+	ch := make(chan *discordgo.InteractionCreate)
 
-func NewMessageComponentCollector(s *discordgo.Session) *MessageComponentCollector {
-	return &MessageComponentCollector{
-		ch:            make(chan *discordgo.InteractionCreate),
-		session:       s,
-		removeHandler: func() {},
-		closed:        false,
-	}
-}
-
-func (c *MessageComponentCollector) Channel() <-chan *discordgo.InteractionCreate {
-	return c.ch
-}
-
-func (c *MessageComponentCollector) Start(f InteractionFilter) {
-	c.closedMu.Lock()
-	defer c.closedMu.Unlock()
-
-	if c.closed {
-		return
-	}
-
-	c.removeHandler = c.session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		// it is okay for multiple goroutines to write to the channel
-		// as long as we are not closing it
-		c.closedMu.RLock()
-		defer c.closedMu.RUnlock()
-
-		if c.closed {
-			return
-		}
-
+	removeHandler := s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type == discordgo.InteractionMessageComponent && f(i) {
-			c.ch <- i
+			ch <- i
 		}
 	})
+
+	go func() {
+		<-ctx.Done()
+		removeHandler()
+		close(ch)
+	}()
+
+	return ch
 }
 
-func (c *MessageComponentCollector) NextInteraction(timeout time.Duration) (*discordgo.InteractionCreate, error) {
-	select {
-	case i := <-c.ch:
-		return i, nil
-	case <-time.After(timeout):
-		return nil, errors.New("timeout")
+func AcceptAllInteractionFilter(i *discordgo.InteractionCreate) bool {
+	return true
+}
+
+func NewUserFilter(userID string) InteractionFilter {
+	return func(i *discordgo.InteractionCreate) bool {
+		return GetInteractionUser(i).ID == userID
 	}
 }
 
-func (c *MessageComponentCollector) Close() {
-	c.closedMu.Lock()
-	defer c.closedMu.Unlock()
-
-	if c.closed {
-		return
+func NewMessageFilter(messageID string) InteractionFilter {
+	return func(i *discordgo.InteractionCreate) bool {
+		return i.Message.ID == messageID
 	}
+}
 
-	c.closed = true
-	c.removeHandler()
-	close(c.ch)
+func NewMultiFilter(filters ...InteractionFilter) InteractionFilter {
+	return func(i *discordgo.InteractionCreate) bool {
+		for _, f := range filters {
+			if !f(i) {
+				return false
+			}
+		}
+		return true
+	}
 }

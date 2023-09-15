@@ -76,9 +76,6 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		Disabled: true,
 	}
 
-	collector := discordutil.NewMessageComponentCollector(s)
-	defer collector.Close()
-
 	msg, err := ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 		Components: []discordgo.MessageComponent{
@@ -91,110 +88,71 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		},
 	}, true)
 
-	collector.Start(func(ci *discordgo.InteractionCreate) bool {
-		return ci.Message.ID == msg.ID &&
-			discordutil.IsSameInteractionUser(ci, i)
-	})
-
 	if err != nil {
 		return err
 	}
 
-	timeout := time.After(time.Minute * 3)
+	collectionContext, cancel := context.WithTimeout(ctx.Context(), 3*time.Minute)
+	defer cancel()
 
-	for {
-		select {
-		case <-timeout:
-			return nil
-		case ci := <-collector.Channel():
-			ciContext, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))
-			defer cancel()
+	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+		discordutil.NewMessageFilter(msg.ID),
+		discordutil.NewUserFilter(discordutil.GetInteractionUser(ctx.Interaction()).ID),
+	))
 
-			if ci.MessageComponentData().CustomID == "history_previous" {
-				offset -= 6
-				page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
+	for ci := range interactions {
+		ciContext, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))
 
-				if err != nil {
-					return err
-				}
+		if ci.MessageComponentData().CustomID == "history_previous" {
+			offset -= 6
+		} else if ci.MessageComponentData().CustomID == "history_next" {
+			offset += 6
+		}
 
-				embed.SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
-				embed.ClearFields()
+		page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
 
-				if page.Page%2 == 0 {
-					embed.SetColor(discordutil.ColorSecondary)
-				} else {
-					embed.SetColor(discordutil.ColorPrimary)
-				}
+		if err != nil {
+			cancel()
+			return err
+		}
 
-				for _, activity := range page.Activities {
-					embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
-				}
+		if page.Page%2 == 0 {
+			embed.SetColor(discordutil.ColorSecondary)
+		} else {
+			embed.SetColor(discordutil.ColorPrimary)
+		}
 
-				previousButton.Disabled = page.Page == 1
-				nextButton.Disabled = page.Page == page.PageCount
+		embed.SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
+		embed.ClearFields()
 
-				err := s.InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseUpdateMessage,
-					Data: &discordgo.InteractionResponseData{
-						Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		for _, activity := range page.Activities {
+			embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
+		}
+
+		previousButton.Disabled = page.Page == 1
+		nextButton.Disabled = page.Page == page.PageCount
+
+		err := s.InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Embeds: []*discordgo.MessageEmbed{embed.Build()},
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{
 						Components: []discordgo.MessageComponent{
-							discordgo.ActionsRow{
-								Components: []discordgo.MessageComponent{
-									previousButton,
-									nextButton,
-								},
-							},
+							previousButton,
+							nextButton,
 						},
 					},
-				})
+				},
+			},
+		})
 
-				if err != nil {
-					return err
-				}
-			} else if ci.MessageComponentData().CustomID == "history_next" {
-				offset += 6
-				page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
+		cancel()
 
-				if err != nil {
-					return err
-				}
-
-				if page.Page%2 == 0 {
-					embed.SetColor(discordutil.ColorSecondary)
-				} else {
-					embed.SetColor(discordutil.ColorPrimary)
-				}
-
-				embed.SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
-				embed.ClearFields()
-
-				for _, activity := range page.Activities {
-					embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
-				}
-
-				previousButton.Disabled = page.Page == 1
-				nextButton.Disabled = page.Page == page.PageCount
-
-				err := s.InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseUpdateMessage,
-					Data: &discordgo.InteractionResponseData{
-						Embeds: []*discordgo.MessageEmbed{embed.Build()},
-						Components: []discordgo.MessageComponent{
-							discordgo.ActionsRow{
-								Components: []discordgo.MessageComponent{
-									previousButton,
-									nextButton,
-								},
-							},
-						},
-					},
-				})
-
-				if err != nil {
-					return err
-				}
-			}
+		if err != nil {
+			return err
 		}
 	}
+
+	return nil
 }

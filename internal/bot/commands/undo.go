@@ -103,16 +103,17 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 		return err
 	}
 
-	collector := discordutil.NewMessageComponentCollector(ctx.Session())
-	defer collector.Close()
+	collectionContext, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
+	defer cancel()
 
-	collector.Start(func(e *discordgo.InteractionCreate) bool {
-		return e.Message.ID == msg.ID && discordutil.IsSameInteractionUser(ctx.Interaction(), e)
-	})
+	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+		discordutil.NewMessageFilter(msg.ID),
+		discordutil.NewUserFilter(discordutil.GetInteractionUser(ctx.Interaction()).ID),
+	))
 
-	ci, err := collector.NextInteraction(15 * time.Second)
+	ci, ok := <-interactions
 
-	if err != nil {
+	if !ok {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
 			Content:    ref.New("Timed out!"),
 			Components: &[]discordgo.MessageComponent{},
@@ -212,16 +213,18 @@ func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
 		return err
 	}
 
-	collector := discordutil.NewMessageComponentCollector(ctx.Session())
-	defer collector.Close()
+	collectionContext, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
 
-	collector.Start(func(e *discordgo.InteractionCreate) bool {
-		return e.Message.ID == msg.ID && discordutil.IsSameInteractionUser(ctx.Interaction(), e)
-	})
+	defer cancel()
 
-	ci, err := collector.NextInteraction(15 * time.Second)
+	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+		discordutil.NewMessageFilter(msg.ID),
+		discordutil.NewUserFilter(userID),
+	))
 
-	if err != nil {
+	ci, ok := <-interactions
+
+	if !ok {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
 			Content:    ref.New("Timed out!"),
 			Components: &[]discordgo.MessageComponent{},
