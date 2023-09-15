@@ -147,23 +147,35 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 	}
 
 	totalMinutes := 0.0
-	highestMinutes := 0.0
-	highestChannel := "N/A"
 
-	values := make([]float64, 0, channels.Len())
+	maxKeys := min(10, channels.Len())
 
-	for _, k := range channels.Keys() {
+	keys := make([]string, 0, maxKeys)
+	values := make([]float64, 0, maxKeys)
+
+	for i := 0; i < channels.Len(); i++ {
+		k := channels.Keys()[i]
 		v, _ := channels.Get(k)
 		totalMinutes += v.Minutes()
-		if v.Minutes() > highestMinutes {
-			highestMinutes = v.Minutes()
-			highestChannel = k
+
+		if i == maxKeys {
+			keys = append(keys, "Other")
+			values = append(values, 0)
+		} else if i > maxKeys {
+			values[maxKeys] += v.Minutes()
+		} else {
+			keys = append(keys, k)
+			values = append(values, v.Minutes())
 		}
-		values = append(values, math.Round(v.Minutes()))
 	}
 
-	reqBody := getQuickChartChannelPieBody(channels.Keys(), values)
+	for i, v := range values {
+		values[i] = math.Round(v)
+	}
 
+	fmt.Println(keys, values)
+
+	reqBody := getQuickChartChannelPieBody(keys, values)
 	req := http.Request{
 		Method: http.MethodPost,
 		URL:    &quickChartURL,
@@ -192,19 +204,26 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 		return errors.New("failed to generate chart")
 	}
 
-	description := fmt.Sprintf("Here are your top channels since <t:%d>", start.Timestamp())
+	fmt.Println(quickChartResponse.Url)
+
+	description := fmt.Sprintf("Here are your top channels since <t:%d>. You logged a total of **%.0f minutes**. Here is a breakdown of your time:", start.Timestamp(), totalMinutes)
+
+	embed := discordutil.NewEmbedBuilder().
+		SetTitle("Top YouTube Channels").
+		SetDescription(description).
+		SetColor(discordutil.ColorPrimary).
+		SetImage(quickChartResponse.Url)
+
+	for i := 0; i < maxKeys; i++ {
+		channelURL := fmt.Sprintf("https://www.youtube.com/%s", keys[i])
+		percent := values[i] / totalMinutes * 100
+		fieldTitle := fmt.Sprintf("%.0f minutes (%.0f%%)", values[i], percent)
+		fieldValue := fmt.Sprintf("[%s](%s)", keys[i], channelURL)
+		embed.AddField(fieldTitle, fieldValue, true)
+	}
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-		Embeds: []*discordgo.MessageEmbed{
-			discordutil.NewEmbedBuilder().
-				SetTitle("Top YouTube Channels").
-				SetDescription(description).
-				SetColor(discordutil.ColorPrimary).
-				SetImage(quickChartResponse.Url).
-				AddField("Total", fmt.Sprintf("%.0f minutes", math.Round(totalMinutes)), true).
-				AddField("Most Watched", fmt.Sprintf("%s (%.0f minutes)", highestChannel, math.Round(highestMinutes)), true).
-				Build(),
-		},
+		Embeds: []*discordgo.MessageEmbed{embed.Build()},
 	})
 }
 
@@ -237,7 +256,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 	}
 
-	start := carbon.Now(timezone).SubDays(6).StartOfDay()
+	start := carbon.Now(timezone).SubDays(100).StartOfDay()
 	end := carbon.Now(timezone).EndOfDay()
 
 	subcommand := ctx.Options()[0]
