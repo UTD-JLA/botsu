@@ -97,7 +97,7 @@ func main() {
 	searcher := anime.NewAnimeSearcher(joined)
 
 	// check if index exists
-	if _, err = os.Stat("anime-index.bluge"); err != nil {
+	if _, err = os.Stat("anime-index.bluge"); os.IsNotExist(err) {
 		log.Println("Creating index")
 		err = searcher.CreateIndex("anime-index.bluge")
 
@@ -113,29 +113,31 @@ func main() {
 		log.Fatal(err)
 	}
 
-	titles, err := vn.ReadVNDBTitlesFile("vndb-db-2023-09-07/db/vn_titles")
+	titles, err := vn.ReadVNDBTitlesFile(config.VNDBDumpPath + "/db/vn_titles")
 
 	if err != nil {
 		panic(err)
 	}
 
-	data, err := vn.ReadVNDBDataFile("vndb-db-2023-09-07/db/vn")
+	data, err := vn.ReadVNDBDataFile(config.VNDBDumpPath + "/db/vn")
 
 	if err != nil {
 		panic(err)
 	}
 
 	vns := vn.JoinTitlesAndData(titles, data)
-
 	vnSearcher := vn.NewVNSearcher(vns)
 
-	err = vnSearcher.CreateIndex("vndb-index")
+	if _, err = os.Stat("vndb-index.bluge"); os.IsNotExist(err) {
+		log.Println("Creating index")
+		err = vnSearcher.CreateIndex("vndb-index.bluge")
+	}
 
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = vnSearcher.LoadIndex("vndb-index")
+	_, err = vnSearcher.LoadIndex("vndb-index.bluge")
 
 	if err != nil {
 		panic(err)
