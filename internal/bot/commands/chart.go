@@ -256,7 +256,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 	}
 
-	start := carbon.Now(timezone).SubDays(100).StartOfDay()
+	start := carbon.Now(timezone).SubDays(6).StartOfDay()
 	end := carbon.Now(timezone).EndOfDay()
 
 	subcommand := ctx.Options()[0]
