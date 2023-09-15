@@ -72,6 +72,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	_, err = os.Stat(config.VNDBDumpPath)
+
+	if os.IsNotExist(err) {
+		log.Println("Downloading vndb dump")
+		err = vn.DownloadVNDBDump(config.VNDBDumpPath)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
 		data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
 
