@@ -92,10 +92,12 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		return err
 	}
 
-	collectionContext, cancel := context.WithTimeout(ctx.Context(), 3*time.Minute)
+	// collectionContext, cancel := context.WithTimeout(ctx.Context(), 3*time.Minute)
+	collectionContext, cancel := context.WithTimeout(ctx.Context(), 10*time.Second)
+
 	defer cancel()
 
-	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+	interactions := discordutil.CollectComponentInteractions(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
 		discordutil.NewMessageFilter(msg.ID),
 		discordutil.NewUserFilter(discordutil.GetInteractionUser(ctx.Interaction()).ID),
 	))
@@ -154,5 +156,9 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 	}
 
-	return nil
+	_, err = ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
+		Components: &[]discordgo.MessageComponent{},
+	})
+
+	return err
 }

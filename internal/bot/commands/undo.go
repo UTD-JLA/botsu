@@ -106,14 +106,12 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 	collectionContext, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
 	defer cancel()
 
-	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+	ci, err := discordutil.CollectSingleComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
 		discordutil.NewMessageFilter(msg.ID),
 		discordutil.NewUserFilter(discordutil.GetInteractionUser(ctx.Interaction()).ID),
 	))
 
-	ci, ok := <-interactions
-
-	if !ok {
+	if err != nil {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
 			Content:    ref.New("Timed out!"),
 			Components: &[]discordgo.MessageComponent{},
@@ -217,14 +215,12 @@ func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
 
 	defer cancel()
 
-	interactions := discordutil.CollectComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
+	ci, err := discordutil.CollectSingleComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
 		discordutil.NewMessageFilter(msg.ID),
 		discordutil.NewUserFilter(userID),
 	))
 
-	ci, ok := <-interactions
-
-	if !ok {
+	if err != nil {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
 			Content:    ref.New("Timed out!"),
 			Components: &[]discordgo.MessageComponent{},
