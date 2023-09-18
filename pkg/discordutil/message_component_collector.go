@@ -6,9 +6,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-type GlobalMessageComponentCollector struct {
-}
-
 type InteractionFilter func(i *discordgo.InteractionCreate) bool
 
 func CollectComponentInteractions(ctx context.Context, s *discordgo.Session, f InteractionFilter) <-chan *discordgo.InteractionCreate {
