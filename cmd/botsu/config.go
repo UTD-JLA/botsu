@@ -23,9 +23,17 @@ type DatabaseConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 	Database string `toml:"database"`
+
+	// used to set connection string, ignoring
+	// the other properties
+	urlOverride *url.URL `toml:"-"`
 }
 
 func (c *DatabaseConfig) ConnectionURL() url.URL {
+	if c.urlOverride != nil {
+		return *c.urlOverride
+	}
+
 	return url.URL{
 		Scheme: "postgres",
 		Host:   c.Host + fmt.Sprintf(":%d", c.Port),
@@ -41,6 +49,60 @@ func (c *DatabaseConfig) ConnectionString() string {
 
 func NewConfig() *Config {
 	return &Config{}
+}
+
+func (c *Config) LoadDefaults() {
+	if c.VNDBDumpPath == "" {
+		c.VNDBDumpPath = "data/vndb-db"
+	}
+
+	if c.AniDBDumpPath == "" {
+		c.AniDBDumpPath = "data/anime-titles.dat"
+	}
+
+	if c.AoDBPath == "" {
+		c.AoDBPath = "data/anime-offline-database-minified.json"
+	}
+}
+
+func (c *Config) LoadEnv() error {
+	token, ok := os.LookupEnv("BOTSU_TOKEN")
+
+	if ok {
+		c.Token = token
+	}
+
+	aodbPath, ok := os.LookupEnv("BOTSU_AODB_PATH")
+
+	if ok {
+		c.AoDBPath = aodbPath
+	}
+
+	anidbPath, ok := os.LookupEnv("BOTSU_ANIDB_PATH")
+
+	if ok {
+		c.AniDBDumpPath = anidbPath
+	}
+
+	vndbPath, ok := os.LookupEnv("BOTSU_VNDB_PATH")
+
+	if ok {
+		c.VNDBDumpPath = vndbPath
+	}
+
+	connectionString, ok := os.LookupEnv("BOTSU_CONNECTION_STRING")
+
+	if ok {
+		connectionURL, err := url.Parse(connectionString)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.urlOverride = connectionURL
+	}
+
+	return nil
 }
 
 func (c *Config) Load(path string) error {

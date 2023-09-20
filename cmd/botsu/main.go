@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
@@ -37,9 +38,17 @@ func main() {
 
 	err := config.Load(*configPath)
 
+	if err != nil && !os.IsNotExist(err) {
+		log.Fatal(err)
+	}
+
+	err = config.LoadEnv()
+
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	config.LoadDefaults()
 
 	log.Println("Reading anime database file")
 
@@ -50,6 +59,13 @@ func main() {
 
 	if os.IsNotExist(err) {
 		log.Println("Downloading anime offline database")
+
+		dir := path.Dir(config.AoDBPath)
+
+		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+			log.Fatal(err)
+		}
+
 		err = anime.DownloadAnimeOfflineDatabase(config.AoDBPath)
 
 		if err != nil {
@@ -63,6 +79,13 @@ func main() {
 
 	if os.IsNotExist(err) {
 		log.Println("Downloading anidb dump")
+
+		dir := path.Dir(config.AniDBDumpPath)
+
+		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+			log.Fatal(err)
+		}
+
 		err = anime.DownloadAniDBDump(config.AniDBDumpPath)
 
 		if err != nil {
@@ -75,6 +98,12 @@ func main() {
 	_, err = os.Stat(config.VNDBDumpPath)
 
 	if os.IsNotExist(err) {
+		dir := path.Dir(config.VNDBDumpPath)
+
+		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+			log.Fatal(err)
+		}
+
 		log.Println("Downloading vndb dump")
 		err = vn.DownloadVNDBDump(config.VNDBDumpPath)
 
@@ -111,7 +140,7 @@ func main() {
 
 	// check if index exists
 	if _, err = os.Stat("anime-index.bluge"); os.IsNotExist(err) {
-		log.Println("Creating index")
+		log.Println("Creating anime index")
 		err = searcher.CreateIndex("anime-index.bluge")
 
 		if err != nil {
@@ -142,7 +171,7 @@ func main() {
 	vnSearcher := vn.NewVNSearcher(vns)
 
 	if _, err = os.Stat("vndb-index.bluge"); os.IsNotExist(err) {
-		log.Println("Creating index")
+		log.Println("Creating VN index")
 		err = vnSearcher.CreateIndex("vndb-index.bluge")
 	}
 
