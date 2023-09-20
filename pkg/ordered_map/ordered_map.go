@@ -14,8 +14,8 @@ func New[T any]() Map[T] {
 
 func NewWithCapacity[T any](capacity int) Map[T] {
 	return &OrderedMap[T]{
-		inner: make(map[string]T, capacity),
-		keys:  make([]string, 0, capacity),
+		inner: make(map[string]T, max(0, capacity)),
+		keys:  make([]string, 0, max(0, capacity)),
 	}
 }
 
