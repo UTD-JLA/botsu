@@ -1,0 +1,6 @@
+config.toml
+*.bluge
+*.json
+*.dat
+vndb-*
+*.exe
