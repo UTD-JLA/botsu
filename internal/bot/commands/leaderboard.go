@@ -161,8 +161,13 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		start = carbonStart.ToStdTime()
-		end = carbonEnd.ToStdTime()
+		if carbonEnd.Lt(carbonStart) {
+			start = carbonEnd.ToStdTime()
+			end = carbonStart.ToStdTime()
+		} else {
+			start = carbonStart.ToStdTime()
+			end = carbonEnd.ToStdTime()
+		}
 	}
 
 	// Note: Do not go over 100 members as Discord will not allow fetching 100+ in a single chunk

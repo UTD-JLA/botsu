@@ -283,6 +283,10 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 	}
 
+	if end.Lt(start) {
+		start, end = end, start
+	}
+
 	if subcommand.Name == "youtube-channel" {
 		return c.handleYoutubeChannel(ctx, user, start, end)
 	}
