@@ -52,6 +52,20 @@ var ChartCommandData = &discordgo.ApplicationCommand{
 			Type:        discordgo.ApplicationCommandOptionSubCommand,
 			Name:        "youtube-channel",
 			Description: "View a chart of your YouTube activity by channel",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "start",
+					Description: "The start date of the chart",
+					Required:    false,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "end",
+					Description: "The end date of the chart",
+					Required:    false,
+				},
+			},
 		},
 	},
 }
@@ -206,7 +220,11 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 	fmt.Println(quickChartResponse.Url)
 
-	description := fmt.Sprintf("Here are your top channels since <t:%d>. You logged a total of **%.0f minutes**. Here is a breakdown of your time:", start.Timestamp(), totalMinutes)
+	description := fmt.Sprintf(
+		"Here are your top channels from <t:%d> to <t:%d> . You logged a total of **%.0f minutes**. Here is a breakdown of your time:",
+		start.Timestamp(),
+		end.Timestamp(),
+		totalMinutes)
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Top YouTube Channels").
