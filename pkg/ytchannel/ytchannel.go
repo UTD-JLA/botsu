@@ -14,6 +14,7 @@ var client = http.DefaultClient
 var ytInitialDataRegex = regexp.MustCompile(`var ytInitialData\s*=\s*(\{.+?\});`)
 
 var ErrInvalidChannelIdentifier = errors.New("invalid channel identifier string, you should either provide a handle (starting with '@') or an ID (starting with 'UC')")
+var ErrYtInitialDataNotFound = errors.New("could not find ytInitialData")
 
 type navigationEndpoint struct {
 	BrowseEndpoint struct {
@@ -82,6 +83,11 @@ func GetYoutubeChannel(handle string) (ch *Channel, err error) {
 	data := ytInitialDataRegex.FindSubmatch(body)
 
 	var initialData ytInitialData
+
+	if len(data) < 2 {
+		err = ErrYtInitialDataNotFound
+		return
+	}
 
 	if err = json.Unmarshal(data[1], &initialData); err != nil {
 		return
