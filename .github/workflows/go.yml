@@ -24,5 +24,11 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+    - name: Install yt-dlp
+      run: |
+        sudo add-apt-repository ppa:tomtomtom/yt-dlp
+        sudo apt update
+        sudo apt install yt-dlp
+
     - name: Test
       run: go test -v ./...
