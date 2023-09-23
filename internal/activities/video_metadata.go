@@ -73,6 +73,10 @@ func getGenericVideoInfo(ctx context.Context, URL *url.URL) (v *VideoInfo, err e
 		Thumbnail:     info.Thumbnail,
 	}
 
+	if v.ChannelName == "" {
+		v.ChannelName = info.Uploader
+	}
+
 	return
 }
 
