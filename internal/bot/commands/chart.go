@@ -135,7 +135,6 @@ func getQuickChartBarBody(xValues []string, yValues []float64) (*bytes.Buffer, e
 	}
 
 	compactBuffer := bytes.Buffer{}
-	err = json.Compact(&compactBuffer, buffer.Bytes())
 
 	if err = json.Compact(&compactBuffer, buffer.Bytes()); err != nil {
 		return nil, err
