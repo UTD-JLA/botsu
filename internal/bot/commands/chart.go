@@ -117,40 +117,55 @@ func colorAsHex(c color.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
-func getQuickChartBarBody(xValues []string, yValues []float64) bytes.Buffer {
+func getQuickChartBarBody(xValues []string, yValues []float64) (*bytes.Buffer, error) {
 	buffer := bytes.Buffer{}
 
 	values, _ := json.Marshal(yValues)
 	labels, _ := json.Marshal(xValues)
 
-	barBodyTemplate.Execute(&buffer, barRequestBody{
+	err := barBodyTemplate.Execute(&buffer, barRequestBody{
 		Values:      string(values),
 		Labels:      string(labels),
 		Color:       fmt.Sprintf("\"%s\"", colorAsHex(discordutil.ColorSecondary)),
 		Annotations: "[]",
 	})
 
-	comactBuffer := bytes.Buffer{}
-	json.Compact(&comactBuffer, buffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
 
-	return comactBuffer
+	compactBuffer := bytes.Buffer{}
+	err = json.Compact(&compactBuffer, buffer.Bytes())
+
+	if err = json.Compact(&compactBuffer, buffer.Bytes()); err != nil {
+		return nil, err
+	}
+
+	return &compactBuffer, nil
 }
 
-func getQuickChartChannelPieBody(labels []string, values []float64) bytes.Buffer {
+func getQuickChartChannelPieBody(labels []string, values []float64) (*bytes.Buffer, error) {
 	buffer := bytes.Buffer{}
 
 	valuesJSON, _ := json.Marshal(values)
 	labelsJSON, _ := json.Marshal(labels)
 
-	channelPieBodyTemplate.Execute(&buffer, pieRequestBody{
+	err := channelPieBodyTemplate.Execute(&buffer, pieRequestBody{
 		Values: string(valuesJSON),
 		Labels: string(labelsJSON),
 	})
 
-	comactBuffer := bytes.Buffer{}
-	json.Compact(&comactBuffer, buffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
 
-	return comactBuffer
+	compactBuffer := bytes.Buffer{}
+
+	if err = json.Compact(&compactBuffer, buffer.Bytes()); err != nil {
+		return nil, err
+	}
+
+	return &compactBuffer, nil
 }
 
 func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *users.User, start, end carbon.Carbon) error {
@@ -189,14 +204,19 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 	fmt.Println(keys, values)
 
-	reqBody := getQuickChartChannelPieBody(keys, values)
+	reqBody, err := getQuickChartChannelPieBody(keys, values)
+
+	if err != nil {
+		return err
+	}
+
 	req := http.Request{
 		Method: http.MethodPost,
 		URL:    &quickChartURL,
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body: io.NopCloser(&reqBody),
+		Body: io.NopCloser(reqBody),
 	}
 
 	resp, err := http.DefaultClient.Do(&req)
@@ -367,14 +387,19 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 
 	avgMinutes := totalMinutes / float64(dailyDurations.Len())
 
-	reqBody := getQuickChartBarBody(dailyDurations.Keys(), values)
+	reqBody, err := getQuickChartBarBody(dailyDurations.Keys(), values)
+
+	if err != nil {
+		return err
+	}
+
 	req := http.Request{
 		Method: http.MethodPost,
 		URL:    &quickChartURL,
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body: io.NopCloser(&reqBody),
+		Body: io.NopCloser(reqBody),
 	}
 
 	resp, err := http.DefaultClient.Do(&req)

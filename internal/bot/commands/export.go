@@ -66,7 +66,11 @@ func (c *ExportCommand) Handle(ctx *bot.InteractionContext) error {
 	jsonEncoder := json.NewEncoder(compressed)
 
 	for _, activity := range activities {
-		jsonEncoder.Encode(activity)
+		err = jsonEncoder.Encode(activity)
+
+		if err != nil {
+			return err
+		}
 	}
 
 	// flush stream

@@ -27,7 +27,7 @@ func DownloadAnimeOfflineDatabase(path string) (err error) {
 
 	defer file.Close()
 
-	io.Copy(file, resp.Body)
+	_, err = io.Copy(file, resp.Body)
 
 	return
 }
@@ -65,7 +65,7 @@ func DownloadAniDBDump(path string) (err error) {
 
 	defer reader.Close()
 
-	io.Copy(file, reader)
+	_, err = io.Copy(file, reader)
 
 	return
 }

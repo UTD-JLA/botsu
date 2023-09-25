@@ -46,7 +46,11 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 
 		// if this is a command, and we haven't responded yet, respond with an error
 		if ctx.IsCommand() && ctx.Deferred() {
-			ctx.RespondOrFollowup(unexpectedErrorMessage, false)
+			_, err = ctx.RespondOrFollowup(unexpectedErrorMessage, false)
+
+			if err != nil {
+				log.Println("Failed to respond to command", err)
+			}
 		}
 	}
 }
