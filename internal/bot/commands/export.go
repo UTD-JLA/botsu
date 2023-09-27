@@ -58,7 +58,7 @@ func (c *ExportCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	// create stream to write to
-	buffer := bytes.NewBuffer([]byte{})
+	buffer := new(bytes.Buffer)
 	stream := bufio.NewWriter(buffer)
 	compressed := gzip.NewWriter(stream)
 
