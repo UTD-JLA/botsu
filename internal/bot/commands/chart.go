@@ -123,11 +123,6 @@ type pieRequestBody struct {
 	Labels string
 }
 
-type response struct {
-	Success bool   `json:"success"`
-	Url     string `json:"url"`
-}
-
 func colorAsHex(c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
