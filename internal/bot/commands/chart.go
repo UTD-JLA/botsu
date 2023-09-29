@@ -55,6 +55,22 @@ var ChartCommandData = &discordgo.ApplicationCommand{
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "type",
+					Description: "The type of chart to view",
+					Required:    false,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{
+							Name:  "pie",
+							Value: "pie",
+						},
+						{
+							Name:  "bar",
+							Value: "bar",
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "start",
 					Description: "The start date of the chart",
 					Required:    false,
@@ -167,7 +183,7 @@ func getQuickChartChannelPieBody(labels []string, values []float64) (*bytes.Buff
 	return &compactBuffer, nil
 }
 
-func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *users.User, start, end carbon.Carbon) error {
+func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *users.User, start, end carbon.Carbon, chartType string) error {
 	channels, err := c.ar.GetTotalByUserIDGroupByVideoChannel(ctx.ResponseContext(), user.ID, start.ToStdTime(), end.ToStdTime())
 
 	if err != nil {
@@ -201,9 +217,13 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 		values[i] = math.Round(v)
 	}
 
-	fmt.Println(keys, values)
+	var reqBody *bytes.Buffer
 
-	reqBody, err := getQuickChartChannelPieBody(keys, values)
+	if chartType != "pie" {
+		reqBody, err = getQuickChartBarBody(keys, values)
+	} else {
+		reqBody, err = getQuickChartChannelPieBody(keys, values)
+	}
 
 	if err != nil {
 		return err
@@ -236,8 +256,6 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 	if !quickChartResponse.Success {
 		return errors.New("failed to generate chart")
 	}
-
-	fmt.Println(quickChartResponse.Url)
 
 	description := fmt.Sprintf(
 		"Here are your top channels from <t:%d> to <t:%d> . You logged a total of **%.0f minutes**. Here is a breakdown of your time:",
@@ -325,7 +343,9 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	if subcommand.Name == "youtube-channel" {
-		return c.handleYoutubeChannel(ctx, user, start, end)
+		chartType := discordutil.GetStringOptionOrDefault(subcommand.Options, "type", "pie")
+
+		return c.handleYoutubeChannel(ctx, user, start, end, chartType)
 	}
 
 	deltaMonths := end.DiffAbsInMonths(start)
