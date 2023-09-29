@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -57,12 +56,8 @@ func (c *ExportCommand) Handle(ctx *bot.InteractionContext) error {
 		return err
 	}
 
-	// create stream to write to
 	buffer := new(bytes.Buffer)
-	stream := bufio.NewWriter(buffer)
-	compressed := gzip.NewWriter(stream)
-
-	// write activities to stream
+	compressed := gzip.NewWriter(buffer)
 	jsonEncoder := json.NewEncoder(compressed)
 
 	for _, activity := range activities {
@@ -75,7 +70,6 @@ func (c *ExportCommand) Handle(ctx *bot.InteractionContext) error {
 
 	// flush stream
 	compressed.Close()
-	stream.Flush()
 
 	filename := fmt.Sprintf("activities-%s-%s.jsonl.gz", userID, time.Now().Format(time.RFC3339))
 
