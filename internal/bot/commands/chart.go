@@ -99,7 +99,7 @@ func NewChartCommand(ar *activities.ActivityRepository, ur *users.UserRepository
 var quickChartURL = url.URL{
 	Scheme: "https",
 	Host:   "quickchart.io",
-	Path:   "/chart/create",
+	Path:   "/chart",
 }
 
 //go:embed chart_body.json.tmpl
@@ -246,14 +246,7 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 	defer resp.Body.Close()
 
-	var quickChartResponse response
-	err = json.NewDecoder(resp.Body).Decode(&quickChartResponse)
-
-	if err != nil {
-		return err
-	}
-
-	if !quickChartResponse.Success {
+	if resp.StatusCode != http.StatusOK {
 		return errors.New("failed to generate chart")
 	}
 
@@ -267,7 +260,7 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 		SetTitle("Top YouTube Channels").
 		SetDescription(description).
 		SetColor(discordutil.ColorPrimary).
-		SetImage(quickChartResponse.Url)
+		SetImage("attachment://chart.png")
 
 	for i := 0; i < maxKeys; i++ {
 		channelURL := fmt.Sprintf("https://www.youtube.com/%s", keys[i])
@@ -279,6 +272,13 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Files: []*discordgo.File{
+			{
+				Name:        "chart.png",
+				ContentType: resp.Header.Get("Content-Type"),
+				Reader:      resp.Body,
+			},
+		},
 	})
 }
 
@@ -429,21 +429,14 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 
 	defer resp.Body.Close()
 
-	var quickChartResponse response
-	err = json.NewDecoder(resp.Body).Decode(&quickChartResponse)
-
-	if err != nil {
-		return err
-	}
-
-	if !quickChartResponse.Success {
+	if resp.StatusCode != http.StatusOK {
 		return errors.New("failed to generate chart")
 	}
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Activity History").
 		SetColor(discordutil.ColorPrimary).
-		SetImage(quickChartResponse.Url).
+		SetImage("attachment://chart.png").
 		AddField("Total", fmt.Sprintf("%.0f minutes", math.Round(totalMinutes)), true).
 		AddField("Average", fmt.Sprintf("%.0f minutes", math.Round(avgMinutes)), true).
 		AddField("Highest", fmt.Sprintf("%.0f minutes (%s)", math.Round(highestMinutes), highestDay), true)
@@ -454,5 +447,12 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Files: []*discordgo.File{
+			{
+				Name:        "chart.png",
+				ContentType: resp.Header.Get("Content-Type"),
+				Reader:      resp.Body,
+			},
+		},
 	})
 }
