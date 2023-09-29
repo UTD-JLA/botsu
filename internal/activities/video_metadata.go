@@ -36,7 +36,6 @@ type VideoInfo struct {
 	LinkedVideos   []string      `json:"linked_videos"`
 }
 
-// Returns a map[string]interface{} meant to be marshalled as JSON
 func GetVideoInfo(ctx context.Context, URL *url.URL, forceYtdlp bool) (*VideoInfo, error) {
 	isYoutubeLink := URL.Host == "youtu.be" ||
 		URL.Host == "youtube.com" ||

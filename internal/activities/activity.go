@@ -36,3 +36,13 @@ func NewActivity() *Activity {
 		Meta: make(map[string]interface{}),
 	}
 }
+
+func (a *Activity) SetMeta(key string, value any) {
+	kv, ok := a.Meta.(map[string]interface{})
+
+	if !ok {
+		panic("cannot set meta key after reassigning meta to type other than map[string]interface{}")
+	}
+
+	kv[key] = value
+}

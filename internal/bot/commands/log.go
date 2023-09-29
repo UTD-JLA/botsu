@@ -16,10 +16,9 @@ import (
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
-	"github.com/jackc/pgx/v5"
-
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-module/carbon/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/kkdai/youtube/v2"
 )
 
@@ -397,22 +396,17 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		}
 
 		thumbnail = anime.Thumbnail
-		activity.Meta = map[string]interface{}{
-			"episodes_watched": episodeCount,
-			"episode_length":   episodeDuration,
-			"sources":          anime.Sources,
-			"title":            anime.PrimaryTitle,
-			"tags":             anime.Tags,
-			"aid":              anime.ID,
-		}
+		activity.SetMeta("anidb_id", anime.ID)
+		activity.SetMeta("thumbnail", anime.Thumbnail)
+		activity.SetMeta("sources", anime.Sources)
+		activity.SetMeta("title", anime.PrimaryTitle)
+		activity.SetMeta("tags", anime.Tags)
 		namedSources = getNamedSources(anime.Sources)
 	} else {
 		activity.Name = nameInput
-		activity.Meta = map[string]interface{}{
-			"episodes_watched": episodeCount,
-			"episode_length":   episodeDuration,
-		}
 	}
+
+	activity.SetMeta("episodes", episodeCount)
 
 	activity.Duration = time.Duration(duration) * time.Minute
 	activity.PrimaryType = activities.ActivityImmersionTypeListening
@@ -538,18 +532,22 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 
 	var durationMinutes float64
 
-	if duration != nil {
-		durationMinutes = float64(discordutil.GetRequiredUintOption(args, "duration"))
-	} else {
+	if duration != nil && pageCount != 0 {
+		// if both duration and page count is provided
+		durationMinutes = float64(*duration)
+		activity.SetMeta("pages", pageCount)
+		activity.SetMeta("speed", float64(pageCount)/(durationMinutes))
+	} else if pageCount != 0 {
+		// if only page count is provided
 		durationMinutes = float64(pageCount) / 2.0
+		activity.SetMeta("pages", pageCount)
+	} else {
+		// if only duration is provided
+		durationMinutes = float64(*duration)
 	}
 
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
-
-	if pageCount != 0 {
-		activity.Meta = map[string]interface{}{"pages": pageCount}
-	}
 
 	enteredDate := discordutil.GetStringOption(args, "date")
 	date := time.Now()
@@ -658,18 +656,13 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		}
 
 		thumbnail = v.ImageURL()
-		meta := map[string]interface{}{
-			"vndb_id":   v.ID,
-			"thumbnail": v.ImageURL(),
-		}
+		activity.SetMeta("vndb_id", v.ID)
+		activity.SetMeta("thumbnail", v.ImageURL())
 
-		if charCount != 0 {
-			meta["characters"] = charCount
-		}
+	}
 
-		activity.Meta = meta
-	} else if charCount != 0 {
-		activity.Meta = map[string]interface{}{"characters": charCount}
+	if charCount != 0 {
+		activity.SetMeta("characters", charCount)
 	}
 
 	var durationMinutes float64
@@ -681,6 +674,8 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		return err
 	}
 
+	speedIsKnown := true
+
 	if duration != nil {
 		durationMinutes = float64(*duration)
 	} else if readingSpeed != nil {
@@ -689,6 +684,11 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		durationMinutes = float64(charCount) / (float64(*readingSpeedHourly) / 60.0)
 	} else {
 		durationMinutes = float64(charCount) / 150.0
+		speedIsKnown = false
+	}
+
+	if charCount != 0 && speedIsKnown {
+		activity.SetMeta("speed", float64(charCount)/(durationMinutes))
 	}
 
 	// because time.Duration casts to uint64, we need to convert to seconds first
