@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/pelletier/go-toml/v2"
 	"net/url"
 	"os"
-
-	"github.com/pelletier/go-toml/v2"
+	"slices"
+	"strings"
 )
 
 type Config struct {
@@ -100,6 +101,16 @@ func (c *Config) LoadEnv() error {
 		}
 
 		c.Database.urlOverride = connectionURL
+	}
+
+	useMembersIntent, ok := os.LookupEnv("BOTSU_USE_MEMBERS_INTENT")
+
+	if ok {
+		c.UseMembersIntent = slices.Contains([]string{
+			"t",
+			"true",
+			"1",
+		}, strings.ToLower(useMembersIntent))
 	}
 
 	return nil
