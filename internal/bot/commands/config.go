@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -82,6 +83,24 @@ var ConfigCommandData = &discordgo.ApplicationCommand{
 			Required:     false,
 			Autocomplete: true,
 		},
+		{
+			Name:        "vn-speed",
+			Description: "Set your VN reading speed (char/min)",
+			Type:        discordgo.ApplicationCommandOptionNumber,
+			Required:    false,
+		},
+		{
+			Name:        "book-speed",
+			Description: "Set your book reading speed (page/min)",
+			Type:        discordgo.ApplicationCommandOptionNumber,
+			Required:    false,
+		},
+		{
+			Name:        "manga-speed",
+			Description: "Set your manga reading speed (page/min)",
+			Type:        discordgo.ApplicationCommandOptionNumber,
+			Required:    false,
+		},
 	},
 }
 
@@ -101,6 +120,13 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 	i := ctx.Interaction()
 	options := ctx.Options()
 
+	if len(options) != 1 {
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "You must provide one option!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	}
+
 	switch options[0].Name {
 	case "timezone":
 		timezone := discordutil.GetRequiredStringOption(options, "timezone")
@@ -108,6 +134,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		if !isValidTimezone(timezone) {
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 				Content: "Invalid timezone",
+				Flags:   discordgo.MessageFlagsEphemeral,
 			})
 		}
 
@@ -118,22 +145,57 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 			Content: "Timezone set!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	case "vn-speed":
+		vnSpeed := float32(discordutil.GetRequiredFloatOption(options, "vn-speed"))
+		err := c.r.SetVisualNovelReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, vnSpeed)
+		if err != nil {
+			return err
+		}
+
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Visual novel reading speed set!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	case "book-speed":
+		bookSpeed := float32(discordutil.GetRequiredFloatOption(options, "book-speed"))
+		err := c.r.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, bookSpeed)
+		if err != nil {
+			return err
+		}
+
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Book reading speed set!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	case "manga-speed":
+		mangaSpeed := float32(discordutil.GetRequiredFloatOption(options, "manga-speed"))
+		err := c.r.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, mangaSpeed)
+		if err != nil {
+			return err
+		}
+
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Manga reading speed set!",
+			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	}
-	return nil
+
+	return fmt.Errorf("unexpected option: %s", options[0].Name)
 }
 
 func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
-	focuedOption := discordutil.GetFocusedOption(ctx.Options())
+	focusedOption := discordutil.GetFocusedOption(ctx.Options())
 
-	if focuedOption == nil {
+	if focusedOption == nil {
 		return nil
 	}
 
-	switch focuedOption.Name {
+	switch focusedOption.Name {
 	case "timezone":
 		const maxResults = 25
-		timezone := focuedOption.StringValue()
+		timezone := focusedOption.StringValue()
 		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, maxResults)
 
 		if timezone == "" {

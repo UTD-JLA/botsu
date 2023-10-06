@@ -5,7 +5,11 @@ CREATE TABLE guilds (
 
 CREATE TABLE users (
     id VARCHAR(20) PRIMARY KEY,
-    timezone TEXT
+    timezone TEXT,
+    vn_reading_speed REAL NOT NULL DEFAULT 0,
+    book_reading_speed REAL NOT NULL DEFAULT 0,
+    manga_reading_speed REAL NOT NULL DEFAULT 0,
+    daily_goal INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE guild_members (

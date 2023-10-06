@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/pelletier/go-toml/v2"
 	"net/url"
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 type Config struct {
