@@ -517,3 +517,31 @@ func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, 
 
 	return members, nil
 }
+
+func (r *ActivityRepository) GetAvgSpeedByMediaTypeAndUserID(ctx context.Context, mediaType, userID string, start, end time.Time) (float32, error) {
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer conn.Release()
+
+	query := `
+		SELECT COALESCE(AVG((meta->'speed')::numeric), 0)
+		FROM activities
+		WHERE user_id = $1
+		AND media_type = $2
+		AND deleted_at IS NULL
+		AND date >= $3
+		AND date <= $4
+		AND meta->'speed' IS NOT NULL
+		AND jsonb_typeof(meta->'speed') = 'number'
+	`
+
+	row := conn.QueryRow(ctx, query, userID, mediaType, start, end)
+
+	var avg float32
+	err = row.Scan(&avg)
+	return avg, err
+}

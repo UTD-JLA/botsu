@@ -223,7 +223,7 @@ func main() {
 	bot := bot.NewBot(guildRepo)
 
 	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher, vnSearcher))
-	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo))
+	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
 	bot.AddCommand(commands.UndoCommandData, commands.NewUndoCommand(activityRepo))

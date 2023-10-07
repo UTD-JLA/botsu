@@ -3,8 +3,10 @@ package commands
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
+	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
@@ -84,32 +86,36 @@ var ConfigCommandData = &discordgo.ApplicationCommand{
 			Autocomplete: true,
 		},
 		{
-			Name:        "vn-speed",
-			Description: "Set your VN reading speed (char/min)",
-			Type:        discordgo.ApplicationCommandOptionNumber,
-			Required:    false,
+			Name:         "vn-speed",
+			Description:  "Set your VN reading speed (char/min)",
+			Type:         discordgo.ApplicationCommandOptionNumber,
+			Required:     false,
+			Autocomplete: true,
 		},
 		{
-			Name:        "book-speed",
-			Description: "Set your book reading speed (page/min)",
-			Type:        discordgo.ApplicationCommandOptionNumber,
-			Required:    false,
+			Name:         "book-speed",
+			Description:  "Set your book reading speed (page/min)",
+			Type:         discordgo.ApplicationCommandOptionNumber,
+			Required:     false,
+			Autocomplete: true,
 		},
 		{
-			Name:        "manga-speed",
-			Description: "Set your manga reading speed (page/min)",
-			Type:        discordgo.ApplicationCommandOptionNumber,
-			Required:    false,
+			Name:         "manga-speed",
+			Description:  "Set your manga reading speed (page/min)",
+			Type:         discordgo.ApplicationCommandOptionNumber,
+			Required:     false,
+			Autocomplete: true,
 		},
 	},
 }
 
 type ConfigCommand struct {
-	r *users.UserRepository
+	userRepository     *users.UserRepository
+	activityRepository *activities.ActivityRepository
 }
 
-func NewConfigCommand(r *users.UserRepository) *ConfigCommand {
-	return &ConfigCommand{r: r}
+func NewConfigCommand(r *users.UserRepository, a *activities.ActivityRepository) *ConfigCommand {
+	return &ConfigCommand{userRepository: r, activityRepository: a}
 }
 
 func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
@@ -138,7 +144,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			})
 		}
 
-		err := c.r.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
+		err := c.userRepository.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
 		if err != nil {
 			return err
 		}
@@ -149,7 +155,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		})
 	case "vn-speed":
 		vnSpeed := float32(discordutil.GetRequiredFloatOption(options, "vn-speed"))
-		err := c.r.SetVisualNovelReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, vnSpeed)
+		err := c.userRepository.SetVisualNovelReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, vnSpeed)
 		if err != nil {
 			return err
 		}
@@ -160,7 +166,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		})
 	case "book-speed":
 		bookSpeed := float32(discordutil.GetRequiredFloatOption(options, "book-speed"))
-		err := c.r.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, bookSpeed)
+		err := c.userRepository.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, bookSpeed)
 		if err != nil {
 			return err
 		}
@@ -171,7 +177,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		})
 	case "manga-speed":
 		mangaSpeed := float32(discordutil.GetRequiredFloatOption(options, "manga-speed"))
-		err := c.r.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, mangaSpeed)
+		err := c.userRepository.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, mangaSpeed)
 		if err != nil {
 			return err
 		}
@@ -192,48 +198,71 @@ func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
 		return nil
 	}
 
-	switch focusedOption.Name {
-	case "timezone":
+	if focusedOption.Name == "timezone" {
 		const maxResults = 25
 		timezone := focusedOption.StringValue()
 		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, maxResults)
 
-		if timezone == "" {
-			for i, tz := range validTimezones {
-				if i >= maxResults {
-					break
-				}
+		for _, tz := range validTimezones {
+			target := getComparableTimezoneString(timezone)
+			compare := getComparableTimezoneString(tz)
 
+			if strings.Contains(compare, target) {
 				results = append(results, &discordgo.ApplicationCommandOptionChoice{
 					Name:  tz,
 					Value: tz,
 				})
 			}
 
-		} else {
-			for _, tz := range validTimezones {
-				target := getComparableTimezoneString(timezone)
-				compare := getComparableTimezoneString(tz)
-
-				if strings.Contains(compare, target) {
-					results = append(results, &discordgo.ApplicationCommandOptionChoice{
-						Name:  tz,
-						Value: tz,
-					})
-				}
-
-				if len(results) >= maxResults {
-					break
-				}
+			if len(results) >= maxResults {
+				break
 			}
 		}
 
 		return ctx.Respond(discordgo.InteractionApplicationCommandAutocompleteResult, &discordgo.InteractionResponseData{
 			Choices: results,
 		})
-	default:
-		return nil
 	}
+
+	// Option is now one of the speed options
+	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	now := time.Now()
+	start := now.AddDate(0, 0, -21)
+	mediaType := activities.ActivityMediaTypeVisualNovel
+	speedUnit := "cpm"
+
+	if focusedOption.Name == "book-speed" {
+		mediaType = activities.ActivityMediaTypeBook
+		speedUnit = "ppm"
+	} else if focusedOption.Name == "manga-speed" {
+		mediaType = activities.ActivityMediaTypeManga
+		speedUnit = "ppm"
+	}
+
+	avg, err := c.activityRepository.GetAvgSpeedByMediaTypeAndUserID(
+		ctx.ResponseContext(),
+		mediaType,
+		userID,
+		start,
+		now,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	var choices []*discordgo.ApplicationCommandOptionChoice
+
+	if avg > 0 {
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  fmt.Sprintf("Recommended: %.2f (%s)", avg, speedUnit),
+			Value: avg,
+		})
+	}
+
+	return ctx.Respond(discordgo.InteractionApplicationCommandAutocompleteResult, &discordgo.InteractionResponseData{
+		Choices: choices,
+	})
 }
 
 func getComparableTimezoneString(tzString string) string {
