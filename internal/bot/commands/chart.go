@@ -112,10 +112,12 @@ var barBodyTemplate = template.Must(template.New("body").Parse(barBodyTemplateFi
 var channelPieBodyTemplate = template.Must(template.New("body").Parse(channelPieBodyTemplateFile))
 
 type barRequestBody struct {
-	Values      string
-	Labels      string
-	Color       string
-	Annotations string
+	Values         string
+	Labels         string
+	Color          string
+	SecondaryColor string
+	Horizontal     int
+	ShowHorizontal bool
 }
 
 type pieRequestBody struct {
@@ -128,17 +130,19 @@ func colorAsHex(c color.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
-func getQuickChartBarBody(xValues []string, yValues []float64) (*bytes.Buffer, error) {
+func getQuickChartBarBody(xValues []string, yValues []float64, yBar int) (*bytes.Buffer, error) {
 	buffer := bytes.Buffer{}
 
 	values, _ := json.Marshal(yValues)
 	labels, _ := json.Marshal(xValues)
 
 	err := barBodyTemplate.Execute(&buffer, barRequestBody{
-		Values:      string(values),
-		Labels:      string(labels),
-		Color:       fmt.Sprintf("\"%s\"", colorAsHex(discordutil.ColorSecondary)),
-		Annotations: "[]",
+		Values:         string(values),
+		Labels:         string(labels),
+		Color:          fmt.Sprintf("\"%s\"", colorAsHex(discordutil.ColorSecondary)),
+		SecondaryColor: fmt.Sprintf("\"%s\"", colorAsHex(discordutil.ColorPrimary)),
+		Horizontal:     yBar,
+		ShowHorizontal: yBar != 0,
 	})
 
 	if err != nil {
@@ -215,7 +219,7 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 	var reqBody *bytes.Buffer
 
 	if chartType != "pie" {
-		reqBody, err = getQuickChartBarBody(keys, values)
+		reqBody, err = getQuickChartBarBody(keys, values, 0)
 	} else {
 		reqBody, err = getQuickChartChannelPieBody(keys, values)
 	}
@@ -363,11 +367,6 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 			start.ToStdTime(),
 			end.ToStdTime(),
 		)
-
-		if err != nil {
-			return err
-		}
-
 	} else {
 		dailyDurations, err = c.ar.GetTotalByUserIDGroupedByDay(
 			ctx.ResponseContext(),
@@ -376,11 +375,10 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 			start.ToStdTime(),
 			end.ToStdTime(),
 		)
+	}
 
-		if err != nil {
-			return err
-		}
-
+	if err != nil {
+		return err
 	}
 
 	totalMinutes := 0.0
@@ -400,8 +398,13 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	avgMinutes := totalMinutes / float64(dailyDurations.Len())
+	goal := user.DailyGoal
 
-	reqBody, err := getQuickChartBarBody(dailyDurations.Keys(), values)
+	if useMonthGrouping {
+		goal = 0
+	}
+
+	reqBody, err := getQuickChartBarBody(dailyDurations.Keys(), values, goal)
 
 	if err != nil {
 		return err

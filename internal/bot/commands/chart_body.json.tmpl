@@ -17,6 +17,21 @@
       ]
     },
     "options": {
+      "annotation": {
+        "annotations": [
+        {{if .ShowHorizontal}}
+          {
+            "type": "line",
+            "mode": "horizontal",
+            "value": {{.Horizontal}},
+            "scaleID": "y-axis-0",
+            "borderColor": {{.SecondaryColor}},
+            "borderWidth": 1,
+            "borderDash": [5, 5]
+          }
+        {{end}}
+        ]
+      },
       "legend": {
         "display": false
       },

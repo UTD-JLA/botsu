@@ -10,6 +10,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
+	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -106,6 +107,15 @@ var ConfigCommandData = &discordgo.ApplicationCommand{
 			Required:     false,
 			Autocomplete: true,
 		},
+		{
+			Name:         "daily-goal",
+			Description:  "Set your daily immersion goal (minutes)",
+			Type:         discordgo.ApplicationCommandOptionInteger,
+			MinValue:     ref.New(0.0),
+			MaxValue:     1440,
+			Required:     false,
+			Autocomplete: false,
+		},
 	},
 }
 
@@ -184,6 +194,18 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 			Content: "Manga reading speed set!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	case "daily-goal":
+		dailyGoal := int(discordutil.GetRequiredUintOption(options, "daily-goal"))
+		err := c.userRepository.SetDailyGoal(ctx.Context(), discordutil.GetInteractionUser(i).ID, dailyGoal)
+
+		if err != nil {
+			return err
+		}
+
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "Daily goal set!",
 			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	}
