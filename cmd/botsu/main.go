@@ -28,6 +28,7 @@ import (
 
 var configPath = flag.String("config", "config.toml", "Path to config file")
 var migrationSource = flag.String("migrations", "", "Path to migrations")
+var enableProfiling = flag.Bool("profiling", false, "Enable profiling")
 
 func main() {
 	flag.Parse()
@@ -254,9 +255,11 @@ func main() {
 	// Wait here until CTRL-C or other term signal is received.
 	log.Println("Bot is now running. Press CTRL-C to exit")
 
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+	if *enableProfiling {
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
