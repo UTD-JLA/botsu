@@ -191,7 +191,7 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 
 	totalMinutes := 0.0
 
-	maxKeys := min(10, channels.Len())
+	maxKeys := min(9, channels.Len())
 
 	keys := make([]string, 0, maxKeys)
 	values := make([]float64, 0, maxKeys)
