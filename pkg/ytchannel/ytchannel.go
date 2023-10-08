@@ -1,6 +1,7 @@
 package ytchannel
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,7 +55,7 @@ type Channel struct {
 	Banners []*Thumbail
 }
 
-func GetYoutubeChannel(handle string) (ch *Channel, err error) {
+func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err error) {
 	var profileURL string
 
 	if strings.HasPrefix(handle, "@") {
@@ -66,7 +67,13 @@ func GetYoutubeChannel(handle string) (ch *Channel, err error) {
 		return
 	}
 
-	resp, err := client.Get(profileURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, profileURL, nil)
+
+	if err != nil {
+		return
+	}
+
+	resp, err := client.Do(req)
 
 	if err != nil {
 		return

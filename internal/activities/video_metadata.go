@@ -5,8 +5,10 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/UTD-JLA/botsu/pkg/ytchannel"
 	"github.com/kkdai/youtube/v2"
 	"github.com/wader/goutubedl"
 )
@@ -16,6 +18,8 @@ var ytClient = youtube.Client{}
 // video is either youtube.com/watch?v=ID or youtube.com/live/ID (for live streams) or youtu.be/ID
 var ytVideoLinkRegex = regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtube\.com/live/|youtu\.be/)([a-zA-Z0-9_-]+)`)
 var ytHandleRegex = regexp.MustCompile(`@([a-zA-Z0-9_-]+)`)
+
+var channelCache = sync.Map{}
 
 func init() {
 	youtube.DefaultClient = youtube.WebClient
@@ -105,18 +109,33 @@ func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err er
 		Thumbnail:     video.Thumbnails[0].URL,
 	}
 
+	if v.ChannelHandle == "" {
+		if cached, ok := channelCache.Load(video.ChannelID); ok {
+			v.ChannelHandle = cached.(string)
+		} else {
+			channel, err := ytchannel.GetYoutubeChannel(ctx, video.ChannelID)
+
+			if err != nil {
+				return nil, err
+			}
+
+			v.ChannelHandle = channel.Handle
+			channelCache.Store(video.ChannelID, channel.Handle)
+		}
+	}
+
 	highestRes := uint(0)
 	highestResThumbnail := ""
 
-	for _, thumnbnail := range video.Thumbnails {
-		res := thumnbnail.Width * thumnbnail.Height
+	for _, thumbnail := range video.Thumbnails {
+		res := thumbnail.Width * thumbnail.Height
 		if res > highestRes {
 			highestRes = res
-			highestResThumbnail = thumnbnail.URL
+			highestResThumbnail = thumbnail.URL
 		}
 
 		if res == 0 {
-			highestResThumbnail = thumnbnail.URL
+			highestResThumbnail = thumbnail.URL
 		}
 	}
 
