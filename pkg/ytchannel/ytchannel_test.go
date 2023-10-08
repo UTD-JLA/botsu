@@ -1,6 +1,7 @@
 package ytchannel_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/UTD-JLA/botsu/pkg/ytchannel"
@@ -8,7 +9,7 @@ import (
 )
 
 func TestGetChannelFromHandle(t *testing.T) {
-	channel, err := ytchannel.GetYoutubeChannel("@HakuiKoyori")
+	channel, err := ytchannel.GetYoutubeChannel(context.TODO(), "@HakuiKoyori")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "UC6eWCld0KwmyHFbAqK3V-Rw", channel.ID)
@@ -19,7 +20,7 @@ func TestGetChannelFromHandle(t *testing.T) {
 }
 
 func TestGetChannelFromID(t *testing.T) {
-	channel, err := ytchannel.GetYoutubeChannel("UC6eWCld0KwmyHFbAqK3V-Rw")
+	channel, err := ytchannel.GetYoutubeChannel(context.TODO(), "UC6eWCld0KwmyHFbAqK3V-Rw")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "UC6eWCld0KwmyHFbAqK3V-Rw", channel.ID)
