@@ -392,7 +392,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		} else if titleField == "en" {
 			activity.Name = anime.EnglishOfficialTitle
 		} else if titleField == "x-jat" {
-			activity.Name = anime.XJatOfficialTitle
+			activity.Name = anime.RomajiOfficialTitle
 		}
 
 		thumbnail = anime.Thumbnail
@@ -992,7 +992,7 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 				title = result.Anime.JapaneseOfficialTitle
 				fieldID = "jp"
 			case anime.SearchFieldXJatTitle:
-				title = result.Anime.XJatOfficialTitle
+				title = result.Anime.RomajiOfficialTitle
 				fieldID = "x-jat"
 			default:
 				title = result.Anime.PrimaryTitle
@@ -1051,7 +1051,7 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 
 	id, field := parts[0], parts[1]
 
-	anime, err := c.animeSearcher.GetAnime(id)
+	anime, err := c.animeSearcher.GetAnime(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err
@@ -1075,7 +1075,7 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, s
 
 	id, field := parts[0], parts[1]
 
-	vn, err := c.vnSearcher.GetVN(id)
+	vn, err := c.vnSearcher.GetVN(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err

@@ -3,24 +3,24 @@ package anime
 type Anime struct {
 	ID                    string   `json:"id"`
 	PrimaryTitle          string   `json:"primaryTitle"`
-	XJatOfficialTitle     string   `json:"xJatOfficialTitle"`
-	XJatSynonyms          []string `json:"xJatSynonyms"`
+	RomajiOfficialTitle   string   `json:"romajiOfficialTitle"`
 	JapaneseOfficialTitle string   `json:"japaneseOfficialTitle"`
-	JapaneseSynonyms      []string `json:"japaneseSynonyms"`
-	EnglishOfficialTitle  string   `json:"englishOfficialTitle"`
-	EnglishSynonyms       []string `json:"englishSynonyms"`
 	Sources               []string `json:"sources"`
-	Type                  string   `json:"type"`
-	Episodes              int      `json:"episodes"`
-	Status                string   `json:"status"`
-	AnimeSeason           struct {
-		Season string `json:"season"`
-		Year   *int   `json:"year"`
-	} `json:"animeSeason"`
-	Picture   string   `json:"picture"`
-	Thumbnail string   `json:"thumbnail"`
-	Relations []string `json:"relations"`
-	Tags      []string `json:"tags"`
+	Picture               string   `json:"picture"`
+	Thumbnail             string   `json:"thumbnail"`
+	Tags                  []string `json:"tags"`
+	EnglishOfficialTitle  string   `json:"englishOfficialTitle"`
+	//XJatSynonyms          []string `json:"xJatSynonyms"`
+	//JapaneseSynonyms      []string `json:"japaneseSynonyms"`
+	//EnglishSynonyms       []string `json:"englishSynonyms"`
+	//Type        string   `json:"type"`
+	//Episodes    int      `json:"episodes"`
+	//Status      string   `json:"status"`
+	//AnimeSeason struct {
+	//	Season string `json:"season"`
+	//	Year   *int   `json:"year"`
+	//} `json:"animeSeason"`
+	//Relations []string `json:"relations"`
 }
 
 func JoinAniDBAndAODB(mappings map[string]*AODBAnime, titleEntries []*AniDBEntry) (joined []*Anime) {
@@ -33,20 +33,11 @@ func JoinAniDBAndAODB(mappings map[string]*AODBAnime, titleEntries []*AniDBEntry
 			joined = append(joined, &Anime{
 				ID:                    aid,
 				PrimaryTitle:          entry.PrimaryTitle,
-				XJatOfficialTitle:     entry.XJatOfficialTitle,
-				XJatSynonyms:          entry.XJatSynonyms,
+				RomajiOfficialTitle:   entry.XJatOfficialTitle,
 				JapaneseOfficialTitle: entry.JapaneseOfficialTitle,
-				JapaneseSynonyms:      entry.JapaneseSynonyms,
-				EnglishOfficialTitle:  entry.EnglishOfficialTitle,
-				EnglishSynonyms:       entry.EnglishSynonyms,
 				Sources:               anime.Sources,
-				Type:                  anime.Type,
-				Episodes:              anime.Episodes,
-				Status:                anime.Status,
-				AnimeSeason:           anime.AnimeSeason,
 				Picture:               anime.Picture,
 				Thumbnail:             anime.Thumbnail,
-				Relations:             anime.Relations,
 				Tags:                  anime.Tags,
 			})
 		}

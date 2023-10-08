@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path"
@@ -17,12 +19,10 @@ import (
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/bwmarrin/discordgo"
-
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/golang-migrate/migrate/v4/source/github"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -114,34 +114,36 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go func() {
-		data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
-
-		if err != nil {
-			panic(err)
-		}
-
-		dataChan <- data
-	}()
-
-	go func() {
-		aodb, err := anime.ReadAODBFile(config.AoDBPath)
-
-		if err != nil {
-			panic(err)
-		}
-
-		aodbChan <- aodb
-	}()
-
-	mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
-	joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
-	searcher := anime.NewAnimeSearcher(joined)
+	searcher := anime.NewAnimeSearcher()
 
 	// check if index exists
 	if _, err = os.Stat("anime-index.bluge"); os.IsNotExist(err) {
 		log.Println("Creating anime index")
-		err = searcher.CreateIndex("anime-index.bluge")
+
+		go func() {
+			data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
+
+			if err != nil {
+				panic(err)
+			}
+
+			dataChan <- data
+		}()
+
+		go func() {
+			aodb, err := anime.ReadAODBFile(config.AoDBPath)
+
+			if err != nil {
+				panic(err)
+			}
+
+			aodbChan <- aodb
+		}()
+
+		mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
+		joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
+
+		err = searcher.CreateIndex("anime-index.bluge", joined)
 
 		if err != nil {
 			log.Fatal(err)
@@ -155,28 +157,30 @@ func main() {
 		log.Fatal(err)
 	}
 
-	titles, err := vn.ReadVNDBTitlesFile(config.VNDBDumpPath + "/db/vn_titles")
-
-	if err != nil {
-		panic(err)
-	}
-
-	data, err := vn.ReadVNDBDataFile(config.VNDBDumpPath + "/db/vn")
-
-	if err != nil {
-		panic(err)
-	}
-
-	vns := vn.JoinTitlesAndData(titles, data)
-	vnSearcher := vn.NewVNSearcher(vns)
+	vnSearcher := vn.NewVNSearcher()
 
 	if _, err = os.Stat("vndb-index.bluge"); os.IsNotExist(err) {
 		log.Println("Creating VN index")
-		err = vnSearcher.CreateIndex("vndb-index.bluge")
-	}
 
-	if err != nil {
-		panic(err)
+		titles, err := vn.ReadVNDBTitlesFile(config.VNDBDumpPath + "/db/vn_titles")
+
+		if err != nil {
+			panic(err)
+		}
+
+		data, err := vn.ReadVNDBDataFile(config.VNDBDumpPath + "/db/vn")
+
+		if err != nil {
+			panic(err)
+		}
+
+		vns := vn.JoinTitlesAndData(titles, data)
+
+		err = vnSearcher.CreateIndex("vndb-index.bluge", vns)
+
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	_, err = vnSearcher.LoadIndex("vndb-index.bluge")
@@ -249,6 +253,10 @@ func main() {
 
 	// Wait here until CTRL-C or other term signal is received.
 	log.Println("Bot is now running. Press CTRL-C to exit")
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)

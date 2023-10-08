@@ -69,25 +69,58 @@ func (o *orderedMatches) findInsertIndex(score float64) int {
 }
 
 type VNSearcher struct {
-	vnMap  map[string]*VisualNovel
 	reader *bluge.Reader
 }
 
-func NewVNSearcher(vns []*VisualNovel) *VNSearcher {
-	vnMap := make(map[string]*VisualNovel, len(vns))
-
-	for _, vn := range vns {
-		vnMap[vn.ID] = vn
-	}
-
-	return &VNSearcher{
-		vnMap: vnMap,
-	}
+func NewVNSearcher() *VNSearcher {
+	return &VNSearcher{}
 }
 
-func (s *VNSearcher) GetVN(id string) (*VisualNovel, error) {
-	if v, ok := s.vnMap[id]; ok {
-		return v, nil
+func (s *VNSearcher) GetVN(ctx context.Context, id string) (*VisualNovel, error) {
+	if s.reader == nil {
+		return nil, ErrReaderNotInitialized
+	}
+
+	// search by id
+	idQuery := bluge.NewMatchQuery(id).
+		SetField("id")
+
+	results, err := s.reader.Search(ctx, bluge.NewTopNSearch(1, idQuery))
+
+	if err != nil {
+		return nil, err
+	}
+
+	next, err := results.Next()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if next != nil {
+		vn := &VisualNovel{}
+
+		err = next.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "id" {
+				vn.ID = string(value)
+			} else if field == "englishTitle" {
+				vn.EnglishTitle = string(value)
+			} else if field == "japaneseTitle" {
+				vn.JapaneseTitle = string(value)
+			} else if field == "romajiTitle" {
+				vn.RomajiTitle = string(value)
+			} else if field == "image" {
+				vn.Image = string(value)
+			}
+
+			return true
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		return vn, nil
 	}
 
 	return nil, fmt.Errorf("vn with id %s not found", id)
@@ -125,15 +158,29 @@ func (s *VNSearcher) Search(ctx context.Context, queryStr string, limit int) ([]
 
 		next, err := dmi.Next()
 		for err == nil && next != nil {
+			vn := &VisualNovel{}
 			err = next.VisitStoredFields(func(field string, value []byte) bool {
-				if field == "_id" {
-					matches.addMatch(s.vnMap[string(value)], next.Score, query.Field())
+				fmt.Println(field, string(value))
+
+				if field == "id" {
+					vn.ID = string(value)
+				} else if field == "englishTitle" {
+					vn.EnglishTitle = string(value)
+				} else if field == "japaneseTitle" {
+					vn.JapaneseTitle = string(value)
+				} else if field == "romajiTitle" {
+					vn.RomajiTitle = string(value)
+				} else if field == "image" {
+					vn.Image = string(value)
 				}
+
 				return true
 			})
 			if err != nil {
 				return nil, err
 			}
+
+			matches.addMatch(vn, next.Score, query.Field())
 			next, err = dmi.Next()
 		}
 		if err != nil {
@@ -162,7 +209,7 @@ func (s *VNSearcher) LoadIndex(path string) (*bluge.Reader, error) {
 	return index, nil
 }
 
-func (s *VNSearcher) CreateIndex(path string) error {
+func (s *VNSearcher) CreateIndex(path string, visualNovels []*VisualNovel) error {
 	config := bluge.DefaultConfig(path)
 	index, err := bluge.OpenWriter(config)
 
@@ -180,12 +227,13 @@ func (s *VNSearcher) CreateIndex(path string) error {
 
 	batch := bluge.NewBatch()
 
-	for _, entry := range s.vnMap {
+	for _, entry := range visualNovels {
 		doc := bluge.NewDocument(entry.ID).
-			AddField(bluge.NewKeywordField("id", entry.ID)).
-			AddField(bluge.NewTextField("englishTitle", entry.EnglishTitle)).
-			AddField(bluge.NewTextField("japaneseTitle", entry.JapaneseTitle)).
-			AddField(bluge.NewTextField("romajiTitle", entry.RomajiTitle))
+			AddField(bluge.NewKeywordField("id", entry.ID).StoreValue()).
+			AddField(bluge.NewTextField("englishTitle", entry.EnglishTitle).StoreValue()).
+			AddField(bluge.NewTextField("japaneseTitle", entry.JapaneseTitle).StoreValue()).
+			AddField(bluge.NewTextField("romajiTitle", entry.RomajiTitle).StoreValue()).
+			AddField(bluge.NewStoredOnlyField("image", []byte(entry.Image)))
 
 		batch.Update(doc.ID(), doc)
 	}

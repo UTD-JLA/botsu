@@ -2,6 +2,7 @@ package anime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -70,24 +71,71 @@ func (o *orderedMatches) findInsertIndex(score float64) int {
 }
 
 type AnimeSearcher struct {
-	animeMap map[string]*Anime
-	reader   *bluge.Reader
+	reader *bluge.Reader
 }
 
-func NewAnimeSearcher(anime []*Anime) *AnimeSearcher {
-	animeMap := make(map[string]*Anime, len(anime))
-
-	for _, entry := range anime {
-		animeMap[entry.ID] = entry
-	}
-
-	return &AnimeSearcher{
-		animeMap: animeMap,
-	}
+func NewAnimeSearcher() *AnimeSearcher {
+	return &AnimeSearcher{}
 }
 
-func (s *AnimeSearcher) GetAnime(id string) (*Anime, error) {
-	if anime, ok := s.animeMap[id]; ok {
+func (s *AnimeSearcher) GetAnime(ctx context.Context, id string) (*Anime, error) {
+	if s.reader == nil {
+		return nil, ErrReaderNotInitialized
+	}
+
+	searchRequest := bluge.NewTopNSearch(1, bluge.NewMatchQuery(id).SetField("id"))
+
+	dmi, err := s.reader.Search(ctx, searchRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	next, err := dmi.Next()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if next != nil {
+		anime := &Anime{}
+
+		err = next.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "id" {
+				anime.ID = string(value)
+			} else if field == "primaryTitle" {
+				anime.PrimaryTitle = string(value)
+			} else if field == "xJatOfficialTitle" {
+				anime.RomajiOfficialTitle = string(value)
+			} else if field == "japaneseOfficialTitle" {
+				anime.JapaneseOfficialTitle = string(value)
+			} else if field == "englishOfficialTitle" {
+				anime.EnglishOfficialTitle = string(value)
+			} else if field == "picture" {
+				anime.Picture = string(value)
+			} else if field == "thumbnail" {
+				anime.Thumbnail = string(value)
+			} else if field == "sources" {
+				err := json.Unmarshal(value, &anime.Sources)
+
+				if err != nil {
+					panic(err)
+				}
+			} else if field == "tags" {
+				err := json.Unmarshal(value, &anime.Tags)
+
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			return true
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
 		return anime, nil
 	}
 
@@ -132,15 +180,45 @@ func (s *AnimeSearcher) Search(ctx context.Context, queryStr string, limit int) 
 
 		next, err := dmi.Next()
 		for err == nil && next != nil {
+			anime := &Anime{}
+
 			err = next.VisitStoredFields(func(field string, value []byte) bool {
-				if field == "_id" {
-					matches.addMatch(s.animeMap[string(value)], next.Score, query.Field())
+				if field == "id" {
+					anime.ID = string(value)
+				} else if field == "primaryTitle" {
+					anime.PrimaryTitle = string(value)
+				} else if field == "xJatOfficialTitle" {
+					anime.RomajiOfficialTitle = string(value)
+				} else if field == "japaneseOfficialTitle" {
+					anime.JapaneseOfficialTitle = string(value)
+				} else if field == "englishOfficialTitle" {
+					anime.EnglishOfficialTitle = string(value)
+				} else if field == "picture" {
+					anime.Picture = string(value)
+				} else if field == "thumbnail" {
+					anime.Thumbnail = string(value)
+				} else if field == "sources" {
+					err := json.Unmarshal(value, &anime.Sources)
+
+					if err != nil {
+						panic(err)
+					}
+				} else if field == "tags" {
+					err := json.Unmarshal(value, &anime.Tags)
+
+					if err != nil {
+						panic(err)
+					}
 				}
+
 				return true
 			})
+
 			if err != nil {
 				return nil, err
 			}
+
+			matches.addMatch(anime, next.Score, query.Field())
 			next, err = dmi.Next()
 		}
 		if err != nil {
@@ -169,7 +247,7 @@ func (s *AnimeSearcher) LoadIndex(path string) (*bluge.Reader, error) {
 	return index, nil
 }
 
-func (s *AnimeSearcher) CreateIndex(path string) error {
+func (s *AnimeSearcher) CreateIndex(path string, anime []*Anime) error {
 	config := bluge.DefaultConfig(path)
 
 	index, err := bluge.OpenWriter(config)
@@ -188,16 +266,29 @@ func (s *AnimeSearcher) CreateIndex(path string) error {
 
 	batch := bluge.NewBatch()
 
-	for _, entry := range s.animeMap {
+	for _, entry := range anime {
+		sourcesBytes, err := json.Marshal(entry.Sources)
+
+		if err != nil {
+			return err
+		}
+
+		tagsBytes, err := json.Marshal(entry.Tags)
+
+		if err != nil {
+			return err
+		}
+
 		doc := bluge.NewDocument(entry.ID).
-			AddField(bluge.NewKeywordField("id", entry.ID)).
-			AddField(bluge.NewTextField(SearchFieldPrimaryTitle, entry.PrimaryTitle)).
-			AddField(bluge.NewTextField(SearchFieldXJatTitle, entry.XJatOfficialTitle)).
-			AddField(bluge.NewTextField(SearchFieldJapaneseTitle, entry.JapaneseOfficialTitle)).
-			AddField(bluge.NewTextField(SearchFieldEnglishTitle, entry.EnglishOfficialTitle))
-		// AddField(bluge.NewCompositeFieldIncluding("xJatSynonyms", entry.XJatSynonyms)).
-		// AddField(bluge.NewCompositeFieldIncluding("japaneseSynonyms", entry.JapaneseSynonyms)).
-		// AddField(bluge.NewCompositeFieldIncluding("englishSynonyms", entry.EnglishSynonyms))
+			AddField(bluge.NewKeywordField("id", entry.ID).StoreValue()).
+			AddField(bluge.NewTextField(SearchFieldPrimaryTitle, entry.PrimaryTitle).StoreValue()).
+			AddField(bluge.NewTextField(SearchFieldXJatTitle, entry.RomajiOfficialTitle).StoreValue()).
+			AddField(bluge.NewTextField(SearchFieldJapaneseTitle, entry.JapaneseOfficialTitle).StoreValue()).
+			AddField(bluge.NewTextField(SearchFieldEnglishTitle, entry.EnglishOfficialTitle).StoreValue()).
+			AddField(bluge.NewStoredOnlyField("picture", []byte(entry.Picture))).
+			AddField(bluge.NewStoredOnlyField("thumbnail", []byte(entry.Thumbnail))).
+			AddField(bluge.NewStoredOnlyField("sources", sourcesBytes)).
+			AddField(bluge.NewStoredOnlyField("tags", tagsBytes))
 
 		batch.Update(doc.ID(), doc)
 	}
