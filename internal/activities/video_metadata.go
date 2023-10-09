@@ -17,7 +17,7 @@ var ytClient = youtube.Client{}
 
 // video is either youtube.com/watch?v=ID or youtube.com/live/ID (for live streams) or youtu.be/ID
 var ytVideoLinkRegex = regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtube\.com/live/|youtu\.be/)([a-zA-Z0-9_-]+)`)
-var ytHandleRegex = regexp.MustCompile(`@([a-zA-Z0-9_-]+)`)
+var ytHandleRegex = regexp.MustCompile(`(^|\s|youtu.*/)@([a-zA-Z0-9_-]+)($|\s)`)
 
 var channelCache = sync.Map{}
 
@@ -150,7 +150,7 @@ func findRelatedYoutubeChannels(video *youtube.Video) []string {
 	relatedChannels := make([]string, 0)
 	matches := ytHandleRegex.FindAllStringSubmatch(video.Description, -1)
 	for _, match := range matches {
-		relatedChannels = append(relatedChannels, "@"+match[1])
+		relatedChannels = append(relatedChannels, "@"+match[2])
 	}
 	return relatedChannels
 }
