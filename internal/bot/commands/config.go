@@ -14,67 +14,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var validTimezones = []string{
-	"Local",
-	"UTC",
-	"GMT",
-	"CST",
-	"EET",
-	"WET",
-	"CET",
-	"EST",
-	"MST",
-
-	"Cuba",
-	"Egypt",
-	"Eire",
-	"Greenwich",
-	"Iceland",
-	"Iran",
-	"Israel",
-	"Jamaica",
-	"Japan",
-	"Libya",
-	"Poland",
-	"Portugal",
-	"PRC",
-	"Singapore",
-	"Turkey",
-
-	"Asia/Shanghai",
-	"Asia/Chongqing",
-	"Asia/Harbin",
-	"Asia/Urumqi",
-	"Asia/Hong_Kong",
-	"Asia/Macao",
-	"Asia/Taipei",
-	"Asia/Tokyo",
-	"Asia/Saigon",
-	"Asia/Seoul",
-	"Asia/Bangkok",
-	"Asia/Dubai",
-	"America/New_York",
-	"America/Los_Angeles",
-	"America/Chicago",
-	"Europe/Moscow",
-	"Europe/London",
-	"Europe/Berlin",
-	"Europe/Paris",
-	"Europe/Rome",
-	"Australia/Sydney",
-	"Australia/Melbourne",
-	"Australia/Darwin",
-}
-
-func isValidTimezone(timezone string) bool {
-	for _, tz := range validTimezones {
-		if timezone == tz {
-			return true
-		}
-	}
-	return false
-}
-
 var ConfigCommandData = &discordgo.ApplicationCommand{
 	Name:        "config",
 	Description: "Configure your timezone and active guilds",
@@ -285,6 +224,64 @@ func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
 	return ctx.Respond(discordgo.InteractionApplicationCommandAutocompleteResult, &discordgo.InteractionResponseData{
 		Choices: choices,
 	})
+}
+
+var validTimezones = []string{
+	"UTC",
+	"GMT",
+	"CST",
+	"EET",
+	"WET",
+	"CET",
+	"EST",
+	"MST",
+	"Cuba",
+	"Egypt",
+	"Eire",
+	"Greenwich",
+	"Iceland",
+	"Iran",
+	"Israel",
+	"Jamaica",
+	"Japan",
+	"Libya",
+	"Poland",
+	"Portugal",
+	"PRC",
+	"Singapore",
+	"Turkey",
+	"Asia/Shanghai",
+	"Asia/Chongqing",
+	"Asia/Harbin",
+	"Asia/Urumqi",
+	"Asia/Hong_Kong",
+	"Asia/Macao",
+	"Asia/Taipei",
+	"Asia/Tokyo",
+	"Asia/Saigon",
+	"Asia/Seoul",
+	"Asia/Bangkok",
+	"Asia/Dubai",
+	"America/New_York",
+	"America/Los_Angeles",
+	"America/Chicago",
+	"Europe/Moscow",
+	"Europe/London",
+	"Europe/Berlin",
+	"Europe/Paris",
+	"Europe/Rome",
+	"Australia/Sydney",
+	"Australia/Melbourne",
+	"Australia/Darwin",
+}
+
+func isValidTimezone(timezone string) bool {
+	for _, tz := range validTimezones {
+		if timezone == tz {
+			return true
+		}
+	}
+	return false
 }
 
 func getComparableTimezoneString(tzString string) string {
