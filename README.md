@@ -7,7 +7,7 @@ which itself is an inspiration of TheMoeWay's [ImmersionBot](https://github.com/
 ## Requirements
 
 - PostgreSQL 15
-- Go 1.12 (for running from source)
+- Go 1.21 (for running from source)
 - Docker (for running from Docker image)
 
 ## Basic Setup
