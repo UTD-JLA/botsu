@@ -49,7 +49,7 @@ func (c *UndoCommand) Handle(ctx *bot.InteractionContext) error {
 func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error {
 	activity, err := c.r.GetByID(ctx.ResponseContext(), id, ctx.Interaction().GuildID)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 			Content: "Activity not found.",
 		})
@@ -161,7 +161,7 @@ func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
 	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
 	activity, err := c.r.GetLatestByUserID(ctx.ResponseContext(), userID, ctx.Interaction().GuildID)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 			Content: "You have no activities to undo.",
 		})

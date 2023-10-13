@@ -286,7 +286,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	guildID := ctx.Interaction().GuildID
 	user, err := c.ur.FindByID(ctx.ResponseContext(), userID)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 			Content: "You have no activity!",
 		})
@@ -301,7 +301,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	} else if guildID != "" {
 		guild, err := c.gr.FindByID(ctx.ResponseContext(), guildID)
 
-		if err != nil && err != pgx.ErrNoRows {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 

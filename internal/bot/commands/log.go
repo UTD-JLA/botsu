@@ -324,13 +324,13 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	data := i.ApplicationCommandData()
 	subcommand := data.Options[0].Name
-	focuedOption := discordutil.GetFocusedOption(data.Options[0].Options)
+	focusedOption := discordutil.GetFocusedOption(data.Options[0].Options)
 
-	if focuedOption == nil {
+	if focusedOption == nil {
 		return nil
 	}
 
-	if focuedOption.Name != "name" {
+	if focusedOption.Name != "name" {
 		return nil
 	}
 
@@ -342,7 +342,7 @@ func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Sessio
 		mediaType = activities.ActivityMediaTypeVisualNovel
 	}
 
-	input := focuedOption.StringValue()
+	input := focusedOption.StringValue()
 	results, err := c.createAutocompleteResult(ctx, mediaType, input)
 
 	if err != nil {
@@ -431,7 +431,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		} else if guildID != "" {
 			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 
@@ -567,7 +567,7 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		} else if guildID != "" {
 			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 
@@ -712,7 +712,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		} else if guildID != "" {
 			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 
@@ -813,7 +813,7 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		} else if guildID != "" {
 			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 
@@ -928,7 +928,7 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 		} else if guildID != "" {
 			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 

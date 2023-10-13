@@ -2,6 +2,7 @@ package guilds
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -97,7 +98,7 @@ func (r *GuildRepository) FindOrCreate(ctx context.Context, id string) (*Guild, 
 	guild, err := r.FindByID(ctx, id)
 
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			guild = NewGuild(id)
 			err = r.Create(ctx, guild)
 

@@ -116,7 +116,7 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		user, err := c.u.FindByID(ctx.Context(), i.Member.User.ID)
 		guildID := i.GuildID
 
-		if err != nil && err != pgx.ErrNoRows {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 
@@ -127,7 +127,7 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		} else if guildID != "" {
 			guild, err := c.g.FindByID(ctx.ResponseContext(), guildID)
 
-			if err != nil && err != pgx.ErrNoRows {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 
