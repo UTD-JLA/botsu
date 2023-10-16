@@ -258,7 +258,10 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 			displayName = usr.Username
 		}
 
-		embed.AddField(fmt.Sprintf("%d. %s", x+1, displayName), m.TotalDuration.String(), false)
+		title := fmt.Sprintf("%d. %s", x+1, displayName)
+		value := m.TotalDuration.Truncate(time.Second).String()
+
+		embed.AddField(title, value, false)
 	}
 
 	err = c.g.RemoveMembers(context.Background(), i.GuildID, deadMembers)
