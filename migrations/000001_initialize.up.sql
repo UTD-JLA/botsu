@@ -16,8 +16,8 @@ CREATE TABLE guild_members (
     PRIMARY KEY (guild_id, user_id),
     guild_id VARCHAR(20) NOT NULL REFERENCES guilds(id),
     user_id VARCHAR(20) NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+    last_seen_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
 );
 
 CREATE TYPE activity_primary_type as ENUM('reading', 'listening');
@@ -32,8 +32,9 @@ CREATE TABLE activities (
     media_type activity_media_type,
     duration BIGINT NOT NULL,
     date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
     deleted_at TIMESTAMP,
+    imported_at TIMESTAMP,
     meta JSONB NOT NULL DEFAULT '{}'
 );
 
@@ -57,7 +58,7 @@ BEGIN
         INSERT INTO guild_members (guild_id, user_id)
         VALUES (NEW.guild_id, NEW.user_id)
         ON CONFLICT (guild_id, user_id) DO UPDATE
-        SET last_seen_at = CURRENT_TIMESTAMP;
+        SET last_seen_at = (NOW() AT TIME ZONE 'utc');
     END IF;
     
     RETURN NEW;

@@ -55,6 +55,10 @@ func (c *InteractionContext) Interaction() *discordgo.InteractionCreate {
 	return c.i
 }
 
+func (c *InteractionContext) User() *discordgo.User {
+	return discordutil.GetInteractionUser(c.i)
+}
+
 // Returns a context that is cancelled when the interaction token is invalidated
 func (c *InteractionContext) Context() context.Context {
 	return c.ctx

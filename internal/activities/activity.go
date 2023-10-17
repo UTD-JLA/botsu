@@ -29,6 +29,7 @@ type Activity struct {
 	Meta        interface{}   `json:"meta"`
 	CreatedAt   time.Time     `json:"created_at"`
 	DeletedAt   *time.Time    `json:"deleted_at"`
+	ImportedAt  *time.Time    `json:"imported_at"`
 }
 
 func NewActivity() *Activity {

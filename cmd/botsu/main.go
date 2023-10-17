@@ -235,6 +235,7 @@ func main() {
 	bot.AddCommand(commands.ChartCommandData, commands.NewChartCommand(activityRepo, userRepo, guildRepo))
 	bot.AddCommand(commands.GuildConfigCommandData, commands.NewGuildConfigCommand(guildRepo))
 	bot.AddCommand(commands.ExportCommandData, commands.NewExportCommand(activityRepo))
+	bot.AddCommand(commands.ImportCommandData, commands.NewImportCommand(activityRepo))
 
 	log.Println("Logging in")
 
