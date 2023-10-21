@@ -313,6 +313,10 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	start := carbon.Now(timezone).SubDays(6).StartOfDay()
 	end := carbon.Now(timezone).EndOfDay()
 
+	if len(ctx.Options()) == 0 {
+		return bot.ErrInvalidOptions
+	}
+
 	subcommand := ctx.Options()[0]
 	startInput := discordutil.GetStringOption(subcommand.Options, "start")
 	endInput := discordutil.GetStringOption(subcommand.Options, "end")

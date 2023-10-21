@@ -42,9 +42,20 @@ func (c *GuildConfigCommand) Handle(ctx *bot.InteractionContext) error {
 	i := ctx.Interaction()
 	options := ctx.Options()
 
+	if len(options) != 1 {
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "You must provide one option!",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+	}
+
 	switch options[0].Name {
 	case "timezone":
-		timezone := discordutil.GetRequiredStringOption(options, "timezone")
+		timezone, err := discordutil.GetRequiredStringOption(options, "timezone")
+
+		if err != nil {
+			return err
+		}
 
 		if !isValidTimezone(timezone) {
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
@@ -52,7 +63,7 @@ func (c *GuildConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			})
 		}
 
-		err := c.r.SetGuildTimezone(ctx.Context(), i.GuildID, timezone)
+		err = c.r.SetGuildTimezone(ctx.Context(), i.GuildID, timezone)
 		if err != nil {
 			return err
 		}

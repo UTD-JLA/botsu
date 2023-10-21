@@ -97,6 +97,12 @@ func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err er
 		return
 	}
 
+	var thumbnailURL string
+
+	if len(video.Thumbnails) > 0 {
+		thumbnailURL = video.Thumbnails[0].URL
+	}
+
 	v = &VideoInfo{
 		URL:           URL.String(),
 		Platform:      "youtube",
@@ -106,7 +112,7 @@ func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err er
 		ChannelID:     video.ChannelID,
 		ChannelName:   video.Author,
 		ChannelHandle: video.ChannelHandle,
-		Thumbnail:     video.Thumbnails[0].URL,
+		Thumbnail:     thumbnailURL,
 	}
 
 	if v.ChannelHandle == "" {

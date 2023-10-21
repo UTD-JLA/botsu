@@ -95,7 +95,13 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 	var start, end time.Time
 	now := carbon.Now(carbon.UTC)
 
-	switch i.ApplicationCommandData().Options[0].Name {
+	if len(ctx.Options()) == 0 {
+		return bot.ErrInvalidOptions
+	}
+
+	subcommand := ctx.Options()[0]
+
+	switch subcommand.Name {
 	case "day":
 		start = now.StartOfDay().ToStdTime()
 		end = now.EndOfDay().ToStdTime()
@@ -112,7 +118,7 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		start = time.Unix(0, 0)
 		end = time.Now()
 	case "custom":
-		options := i.ApplicationCommandData().Options[0].Options
+		options := subcommand.Options
 		user, err := c.u.FindByID(ctx.Context(), i.Member.User.ID)
 		guildID := i.GuildID
 
@@ -136,8 +142,14 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 			}
 		}
 
-		startString := discordutil.GetRequiredStringOption(options, "start")
-		endString := discordutil.GetRequiredStringOption(options, "end")
+		startString, err := discordutil.GetRequiredStringOption(options, "start")
+		if err != nil {
+			return err
+		}
+		endString, err := discordutil.GetRequiredStringOption(options, "end")
+		if err != nil {
+			return err
+		}
 		carbonStart := carbon.SetTimezone(timezone).Parse(startString)
 		carbonEnd := carbon.SetTimezone(timezone).Parse(endString)
 

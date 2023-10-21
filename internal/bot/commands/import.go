@@ -120,7 +120,10 @@ func (c *ImportCommand) handleUndo(
 	opts []*discordgo.ApplicationCommandInteractionDataOption,
 ) error {
 	// use string instead of int because it is too large for integer options
-	timestampString := discordutil.GetRequiredStringOption(opts, "timestamp")
+	timestampString, err := discordutil.GetRequiredStringOption(opts, "timestamp")
+	if err != nil {
+		return err
+	}
 	timestamp, err := strconv.ParseInt(timestampString, 10, 64)
 
 	if err != nil {
@@ -132,8 +135,6 @@ func (c *ImportCommand) handleUndo(
 	}
 
 	var n int64
-
-	fmt.Printf("Undoing import for user %s at timestamp %s\n", cmd.User().ID, time.Unix(0, timestamp).Format(time.RFC3339Nano))
 
 	if n, err = c.r.UndoImportByUserIDAndTimestamp(ctx, cmd.User().ID, time.Unix(0, timestamp)); err != nil {
 		_, err = cmd.Followup(&discordgo.WebhookParams{
@@ -165,6 +166,11 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 
 	ctx := cmd.Context()
 	opts := cmd.Options()
+
+	if len(opts) == 0 {
+		return bot.ErrInvalidOptions
+	}
+
 	subcommand := opts[0].Name
 	opts = opts[0].Options
 
@@ -176,7 +182,13 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 		return c.handleUndo(ctx, cmd, opts)
 	}
 
-	attachmentID, ok := discordutil.GetRequiredOption(opts, "file").Value.(string)
+	attachmentOption, err := discordutil.GetRequiredOption(opts, "file")
+
+	if err != nil {
+		return err
+	}
+
+	attachmentID, ok := attachmentOption.Value.(string)
 
 	if !ok {
 		return errors.New("expected string value from attachment option")

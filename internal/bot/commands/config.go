@@ -84,7 +84,11 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 
 	switch options[0].Name {
 	case "timezone":
-		timezone := discordutil.GetRequiredStringOption(options, "timezone")
+		timezone, err := discordutil.GetRequiredStringOption(options, "timezone")
+
+		if err != nil {
+			return err
+		}
 
 		if !isValidTimezone(timezone) {
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
@@ -93,7 +97,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			})
 		}
 
-		err := c.userRepository.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
+		err = c.userRepository.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
 		if err != nil {
 			return err
 		}
@@ -103,8 +107,13 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	case "vn-speed":
-		vnSpeed := float32(discordutil.GetRequiredFloatOption(options, "vn-speed"))
-		err := c.userRepository.SetVisualNovelReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, vnSpeed)
+		vnSpeed, err := discordutil.GetRequiredFloatOption(options, "vn-speed")
+
+		if err != nil {
+			return err
+		}
+
+		err = c.userRepository.SetVisualNovelReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, float32(vnSpeed))
 		if err != nil {
 			return err
 		}
@@ -114,8 +123,14 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	case "book-speed":
-		bookSpeed := float32(discordutil.GetRequiredFloatOption(options, "book-speed"))
-		err := c.userRepository.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, bookSpeed)
+		bookSpeed, err := discordutil.GetRequiredFloatOption(options, "book-speed")
+
+		if err != nil {
+			return err
+		}
+
+		err = c.userRepository.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, float32(bookSpeed))
+
 		if err != nil {
 			return err
 		}
@@ -125,8 +140,14 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	case "manga-speed":
-		mangaSpeed := float32(discordutil.GetRequiredFloatOption(options, "manga-speed"))
-		err := c.userRepository.SetBookReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, mangaSpeed)
+		mangaSpeed, err := discordutil.GetRequiredFloatOption(options, "manga-speed")
+
+		if err != nil {
+			return err
+		}
+
+		err = c.userRepository.SetMangaReadingSpeed(ctx.Context(), discordutil.GetInteractionUser(i).ID, float32(mangaSpeed))
+
 		if err != nil {
 			return err
 		}
@@ -136,8 +157,13 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			Flags:   discordgo.MessageFlagsEphemeral,
 		})
 	case "daily-goal":
-		dailyGoal := int(discordutil.GetRequiredUintOption(options, "daily-goal"))
-		err := c.userRepository.SetDailyGoal(ctx.Context(), discordutil.GetInteractionUser(i).ID, dailyGoal)
+		dailyGoal, err := discordutil.GetRequiredUintOption(options, "daily-goal")
+
+		if err != nil {
+			return err
+		}
+
+		err = c.userRepository.SetDailyGoal(ctx.Context(), discordutil.GetInteractionUser(i).ID, int(dailyGoal))
 
 		if err != nil {
 			return err

@@ -301,7 +301,11 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 		return c.handleAutocomplete(ctx.ResponseContext(), ctx.Session(), ctx.Interaction())
 	}
 
-	subcommand := ctx.Data().Options[0]
+	if len(ctx.Options()) == 0 {
+		return bot.ErrInvalidOptions
+	}
+
+	subcommand := ctx.Options()[0]
 
 	switch subcommand.Name {
 	case "manual":
@@ -323,6 +327,11 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 
 func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	data := i.ApplicationCommandData()
+
+	if len(data.Options) == 0 {
+		return bot.ErrInvalidOptions
+	}
+
 	subcommand := data.Options[0].Name
 	focusedOption := discordutil.GetFocusedOption(data.Options[0].Options)
 
@@ -371,11 +380,17 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		activity.GuildID = &ctx.Interaction().GuildID
 	}
 
-	episodeCount := discordutil.GetRequiredUintOption(args, "episodes")
+	episodeCount, err := discordutil.GetRequiredUintOption(args, "episodes")
+	if err != nil {
+		return err
+	}
 	episodeDuration := discordutil.GetUintOptionOrDefault(args, "episode-duration", 24)
 	duration := episodeDuration * episodeCount
 
-	nameInput := discordutil.GetRequiredStringOption(args, "name")
+	nameInput, err := discordutil.GetRequiredStringOption(args, "name")
+	if err != nil {
+		return err
+	}
 	thumbnail := ""
 	var namedSources map[string]string
 
@@ -454,7 +469,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 
 	activity.Date = date
 
-	err := c.activityRepo.Create(ctx.Context(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -511,7 +526,10 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		activity.GuildID = &ctx.Interaction().GuildID
 	}
 
-	activity.Name = discordutil.GetRequiredStringOption(args, "name")
+	var err error
+	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
+		return err
+	}
 	activity.PrimaryType = activities.ActivityImmersionTypeReading
 	if subcommand.Name == "book" {
 		activity.MediaType = ref.New(activities.ActivityMediaTypeBook)
@@ -520,7 +538,10 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 	}
 	activity.UserID = userID
 
-	pageCount := discordutil.GetRequiredUintOption(args, "pages")
+	pageCount, err := discordutil.GetRequiredUintOption(args, "pages")
+	if err != nil {
+		return err
+	}
 	duration := discordutil.GetUintOption(args, "duration")
 
 	if pageCount == 0 && duration == nil {
@@ -590,9 +611,7 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 
 	activity.Date = date
 
-	err := c.activityRepo.Create(ctx.Context(), activity)
-
-	if err != nil {
+	if err = c.activityRepo.Create(ctx.Context(), activity); err != nil {
 		return err
 	}
 
@@ -629,12 +648,18 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		activity.GuildID = &ctx.Interaction().GuildID
 	}
 
-	activity.Name = discordutil.GetRequiredStringOption(args, "name")
+	var err error
+	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
+		return err
+	}
 	activity.PrimaryType = activities.ActivityImmersionTypeReading
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVisualNovel)
 	activity.UserID = userID
 
-	charCount := discordutil.GetRequiredUintOption(args, "characters")
+	charCount, err := discordutil.GetRequiredUintOption(args, "characters")
+	if err != nil {
+		return err
+	}
 	duration := discordutil.GetUintOption(args, "duration")
 	readingSpeed := discordutil.GetUintOption(args, "reading-speed")
 	readingSpeedHourly := discordutil.GetUintOption(args, "reading-speed-hourly")
@@ -735,7 +760,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 
 	activity.Date = date
 
-	err := c.activityRepo.Create(ctx.Context(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err
@@ -775,7 +800,11 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		activity.GuildID = &ctx.Interaction().GuildID
 	}
 
-	URL := discordutil.GetRequiredStringOption(args, "url")
+	URL, err := discordutil.GetRequiredStringOption(args, "url")
+
+	if err != nil {
+		return err
+	}
 
 	u, err := url.Parse(URL)
 
@@ -836,7 +865,11 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 	activity.Date = date
 
 	if discordutil.GetUintOption(args, "duration") != nil {
-		activity.Duration = time.Duration(discordutil.GetRequiredUintOption(args, "duration")) * time.Minute
+		durationOption, err := discordutil.GetRequiredUintOption(args, "duration")
+		if err != nil {
+			return err
+		}
+		activity.Duration = time.Duration(durationOption) * time.Minute
 	} else {
 		activity.Duration = video.Duration
 	}
@@ -904,9 +937,18 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 		activity.GuildID = &ctx.Interaction().GuildID
 	}
 
-	activity.Name = discordutil.GetRequiredStringOption(args, "name")
-	activity.PrimaryType = discordutil.GetRequiredStringOption(args, "type")
-	activity.Duration = time.Duration(discordutil.GetRequiredUintOption(args, "duration")) * time.Minute
+	var err error
+	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
+		return err
+	}
+	if activity.PrimaryType, err = discordutil.GetRequiredStringOption(args, "type"); err != nil {
+		return err
+	}
+	durationOption, err := discordutil.GetRequiredUintOption(args, "duration")
+	if err != nil {
+		return err
+	}
+	activity.Duration = time.Duration(durationOption) * time.Minute
 	activity.MediaType = discordutil.GetStringOption(args, "media-type")
 	activity.UserID = userID
 
@@ -950,7 +992,7 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 	}
 
 	activity.Date = date
-	err := c.activityRepo.Create(ctx.Context(), activity)
+	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
 		return err

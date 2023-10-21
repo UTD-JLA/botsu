@@ -1,10 +1,13 @@
 package discordutil
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var OptionNotFound = errors.New("option not found")
 
 func GetFocusedOption(options []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.ApplicationCommandInteractionDataOption {
 	for _, option := range options {
@@ -26,13 +29,12 @@ func GetOption(options []*discordgo.ApplicationCommandInteractionDataOption, key
 	return nil
 }
 
-func GetRequiredOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *discordgo.ApplicationCommandInteractionDataOption {
-	option := GetOption(options, key)
-	if option == nil {
-		panic(fmt.Sprintf("Required option %s not found", key))
+func GetRequiredOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (*discordgo.ApplicationCommandInteractionDataOption, error) {
+	if option := GetOption(options, key); option != nil {
+		return option, nil
 	}
 
-	return option
+	return nil, fmt.Errorf("%w: %s", OptionNotFound, key)
 }
 
 func GetStringOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *string {
@@ -54,9 +56,13 @@ func GetStringOptionOrDefault(options []*discordgo.ApplicationCommandInteraction
 	return option.StringValue()
 }
 
-func GetRequiredStringOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) string {
-	option := GetRequiredOption(options, key)
-	return option.StringValue()
+func GetRequiredStringOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (string, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return "", err
+	}
+
+	return option.StringValue(), nil
 }
 
 func GetIntOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *int64 {
@@ -78,9 +84,13 @@ func GetIntOptionOrDefault(options []*discordgo.ApplicationCommandInteractionDat
 	return option.IntValue()
 }
 
-func GetRequiredIntOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) int64 {
-	option := GetRequiredOption(options, key)
-	return option.IntValue()
+func GetRequiredIntOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (int64, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return 0, err
+	}
+
+	return option.IntValue(), nil
 }
 
 func GetBoolOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *bool {
@@ -102,9 +112,13 @@ func GetBoolOptionOrDefault(options []*discordgo.ApplicationCommandInteractionDa
 	return option.BoolValue()
 }
 
-func GetRequiredBoolOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) bool {
-	option := GetRequiredOption(options, key)
-	return option.BoolValue()
+func GetRequiredBoolOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (bool, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return false, err
+	}
+
+	return option.BoolValue(), nil
 }
 
 func GetUintOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *uint64 {
@@ -126,9 +140,13 @@ func GetUintOptionOrDefault(options []*discordgo.ApplicationCommandInteractionDa
 	return option.UintValue()
 }
 
-func GetRequiredUintOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) uint64 {
-	option := GetRequiredOption(options, key)
-	return option.UintValue()
+func GetRequiredUintOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (uint64, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return 0, err
+	}
+
+	return option.UintValue(), nil
 }
 
 func GetFloatOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *float64 {
@@ -150,9 +168,13 @@ func GetFloatOptionOrDefault(options []*discordgo.ApplicationCommandInteractionD
 	return option.FloatValue()
 }
 
-func GetRequiredFloatOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) float64 {
-	option := GetRequiredOption(options, key)
-	return option.FloatValue()
+func GetRequiredFloatOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) (float64, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return 0, err
+	}
+
+	return option.FloatValue(), nil
 }
 
 func GetUserOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) *discordgo.User {
@@ -173,9 +195,13 @@ func GetUserOptionOrDefault(options []*discordgo.ApplicationCommandInteractionDa
 	return option.UserValue(s)
 }
 
-func GetRequiredUserOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) *discordgo.User {
-	option := GetRequiredOption(options, key)
-	return option.UserValue(s)
+func GetRequiredUserOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) (*discordgo.User, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return option.UserValue(s), nil
 }
 
 func GetChannelOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) *discordgo.Channel {
@@ -196,9 +222,13 @@ func GetChannelOptionOrDefault(options []*discordgo.ApplicationCommandInteractio
 	return option.ChannelValue(s)
 }
 
-func GetRequiredChannelOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) *discordgo.Channel {
-	option := GetRequiredOption(options, key)
-	return option.ChannelValue(s)
+func GetRequiredChannelOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session) (*discordgo.Channel, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return option.ChannelValue(s), nil
 }
 
 func GetRoleOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session, gid string) *discordgo.Role {
@@ -219,7 +249,11 @@ func GetRoleOptionOrDefault(options []*discordgo.ApplicationCommandInteractionDa
 	return option.RoleValue(s, gid)
 }
 
-func GetRequiredRoleOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session, gid string) *discordgo.Role {
-	option := GetRequiredOption(options, key)
-	return option.RoleValue(s, gid)
+func GetRequiredRoleOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string, s *discordgo.Session, gid string) (*discordgo.Role, error) {
+	option, err := GetRequiredOption(options, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return option.RoleValue(s, gid), nil
 }
