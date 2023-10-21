@@ -7,7 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var OptionNotFound = errors.New("option not found")
+var ErrOptionNotFound = errors.New("option not found")
 
 func GetFocusedOption(options []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.ApplicationCommandInteractionDataOption {
 	for _, option := range options {
@@ -34,7 +34,7 @@ func GetRequiredOption(options []*discordgo.ApplicationCommandInteractionDataOpt
 		return option, nil
 	}
 
-	return nil, fmt.Errorf("%w: %s", OptionNotFound, key)
+	return nil, fmt.Errorf("%w: %s", ErrOptionNotFound, key)
 }
 
 func GetStringOption(options []*discordgo.ApplicationCommandInteractionDataOption, key string) *string {
