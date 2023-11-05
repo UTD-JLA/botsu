@@ -39,13 +39,15 @@ func CollectComponentInteractions(ctx context.Context, s *discordgo.Session, f I
 }
 
 func CollectSingleComponentInteraction(ctx context.Context, s *discordgo.Session, f InteractionFilter) (*discordgo.InteractionCreate, error) {
-	ch := make(chan *discordgo.InteractionCreate, 1)
+	ch := make(chan *discordgo.InteractionCreate)
 
-	s.AddHandlerOnce(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	removeFunc := s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type == discordgo.InteractionMessageComponent && f(i) {
 			ch <- i
 		}
 	})
+
+	defer removeFunc()
 
 	select {
 	case <-ctx.Done():
