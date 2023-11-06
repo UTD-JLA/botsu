@@ -233,6 +233,33 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 		return err
 	}
 
+	for i, a := range as {
+		// Important: make sure ID is overwritten
+		a.UserID = cmd.User().ID
+
+		if err = activities.ValidateExternalActivity(a); err == nil {
+			continue
+		}
+
+		embed := discordutil.NewEmbedBuilder().
+			SetColor(discordutil.ColorDanger).
+			SetTitle("Invalid Activity!")
+
+		description := fmt.Sprintf(
+			"Activity with ID %d on line %d was unable to be imported: %s",
+			a.ID,
+			i,
+			err)
+
+		embed.SetDescription(description)
+
+		_, err := cmd.Followup(&discordgo.WebhookParams{
+			Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		}, false)
+
+		return err
+	}
+
 	if err := c.r.ImportMany(ctx, as); err != nil {
 		log.Println(err)
 
