@@ -201,7 +201,7 @@ func (r *UserRepository) SetMangaReadingSpeed(ctx context.Context, userID string
 	return nil
 }
 
-func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone string) error {
+func (r *UserRepository) SetUserTimezone(ctx context.Context, userID, timezone string) error {
 	conn, err := r.pool.Acquire(ctx)
 
 	if err != nil {
@@ -214,13 +214,13 @@ func (r *UserRepository) SetUserTimezone(ctx context.Context, userId, timezone s
 		`INSERT INTO users (id, timezone)
 		VALUES ($1, $2)
 		ON CONFLICT (id) DO UPDATE SET timezone = $2;`,
-		userId, timezone)
+		userID, timezone)
 
 	if err != nil {
 		return err
 	}
 
-	user := r.getCachedUser(userId)
+	user := r.getCachedUser(userID)
 
 	if user != nil {
 		user.Timezone = &timezone

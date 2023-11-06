@@ -603,7 +603,7 @@ func (r *ActivityRepository) PageByUserID(
 	return page, nil
 }
 
-func (r *ActivityRepository) DeleteById(ctx context.Context, id uint64) error {
+func (r *ActivityRepository) DeleteByID(ctx context.Context, id uint64) error {
 	conn, err := r.pool.Acquire(ctx)
 
 	if err != nil {
@@ -621,7 +621,7 @@ func (r *ActivityRepository) DeleteById(ctx context.Context, id uint64) error {
 	return err
 }
 
-func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, limit int, start, end time.Time) ([]*MemberStats, error) {
+func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildID string, limit int, start, end time.Time) ([]*MemberStats, error) {
 	members := make([]*MemberStats, 0)
 
 	conn, err := r.pool.Acquire(ctx)
@@ -643,7 +643,7 @@ func (r *ActivityRepository) GetTopMembers(ctx context.Context, guildId string, 
 		GROUP BY m.user_id
 		ORDER BY total_duration DESC
 		LIMIT $4
-	`, guildId, start, end, limit)
+	`, guildID, start, end, limit)
 
 	if err != nil {
 		return nil, err

@@ -101,7 +101,7 @@ func (r *GuildRepository) FindOrCreate(ctx context.Context, id string) (*Guild, 
 	return guild, nil
 }
 
-func (r *GuildRepository) SetGuildTimezone(ctx context.Context, guildId, timezone string) error {
+func (r *GuildRepository) SetGuildTimezone(ctx context.Context, guildID, timezone string) error {
 	conn, err := r.pool.Acquire(ctx)
 
 	if err != nil {
@@ -114,13 +114,13 @@ func (r *GuildRepository) SetGuildTimezone(ctx context.Context, guildId, timezon
 		`UPDATE guilds
 		SET timezone = $2
 		WHERE id = $1;`,
-		guildId, timezone)
+		guildID, timezone)
 
 	if err != nil {
 		return err
 	}
 
-	entry, ok := r.cache.Load(guildId)
+	entry, ok := r.cache.Load(guildID)
 
 	if ok {
 		guild := entry.(*Guild)
@@ -130,7 +130,7 @@ func (r *GuildRepository) SetGuildTimezone(ctx context.Context, guildId, timezon
 	return nil
 }
 
-func (r *GuildRepository) RemoveMembers(ctx context.Context, guildId string, userId []string) error {
+func (r *GuildRepository) RemoveMembers(ctx context.Context, guildID string, userID []string) error {
 	conn, err := r.pool.Acquire(ctx)
 
 	if err != nil {
@@ -143,7 +143,7 @@ func (r *GuildRepository) RemoveMembers(ctx context.Context, guildId string, use
 		`DELETE FROM guild_members
 		WHERE guild_id = $1
 		AND user_id = ANY($2);`,
-		guildId, userId)
+		guildID, userID)
 
 	return err
 }

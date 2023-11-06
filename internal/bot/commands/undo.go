@@ -125,7 +125,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 	defer cancel()
 
 	if ci.MessageComponentData().CustomID == "undo_confirm" {
-		err = c.r.DeleteById(ciCtx, activity.ID)
+		err = c.r.DeleteByID(ciCtx, activity.ID)
 
 		if err != nil {
 			return err
@@ -234,7 +234,7 @@ func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
 	defer cancel()
 
 	if ci.MessageComponentData().CustomID == "undo_confirm" {
-		err = c.r.DeleteById(ciCtx, activity.ID)
+		err = c.r.DeleteByID(ciCtx, activity.ID)
 
 		if err != nil {
 			return err
