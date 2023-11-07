@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
@@ -64,6 +65,21 @@ func main() {
 	// Config is loaded, now we can set the log level
 	logLevel.Set(config.LogLevel)
 	logger.Info("Log level set", slog.String("level", config.LogLevel.String()))
+
+	discordgo.Logger = func(msgL, _caller int, format string, a ...interface{}) {
+		msg := fmt.Sprintf("[DGO] "+format, a...)
+
+		switch msgL {
+		case discordgo.LogError:
+			logger.Error(msg)
+		case discordgo.LogWarning:
+			logger.Warn(msg)
+		case discordgo.LogInformational:
+			logger.Info(msg)
+		case discordgo.LogDebug:
+			logger.Debug(msg)
+		}
+	}
 
 	logger.Info("Reading anime database file", slog.String("path", config.AoDBPath))
 
