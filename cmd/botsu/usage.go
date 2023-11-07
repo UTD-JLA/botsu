@@ -23,10 +23,9 @@ func init() {
 		fmt.Fprintln(flag.CommandLine.Output(), "  BOTSU_ANIDB_DUMP_PATH: Path to anidb dump")
 		fmt.Fprintln(flag.CommandLine.Output(), "  BOTSU_VNDB_DUMP_PATH: Path to vndb dump")
 		fmt.Fprintln(flag.CommandLine.Output(), "  BOTSU_USE_MEMBERS_INTENT: Whether to use the members intent")
+		fmt.Fprintln(flag.CommandLine.Output(), "  BOTSU_NO_PANIC: Whether to recover from panics caused by command handlers")
 
 		fmt.Fprintln(flag.CommandLine.Output(), "\nConfig file:")
-		fmt.Fprintln(flag.CommandLine.Output(), "The config file is a TOML file with the following structure:")
-		fmt.Fprintln(flag.CommandLine.Output())
 		printTOMLStructure(
 			&prefixedWriter{w: flag.CommandLine.Output(), prefix: []byte("    ")},
 			NewConfig(),

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -19,6 +18,7 @@ type Config struct {
 	Token            string         `toml:"token"`
 	UseMembersIntent bool           `toml:"use_members_intent"`
 	LogLevel         slog.Level     `toml:"log_level"`
+	NoPanic          bool           `toml:"no_panic"`
 }
 
 type DatabaseConfig struct {
@@ -109,11 +109,7 @@ func (c *Config) LoadEnv() error {
 	useMembersIntent, ok := os.LookupEnv("BOTSU_USE_MEMBERS_INTENT")
 
 	if ok {
-		c.UseMembersIntent = slices.Contains([]string{
-			"t",
-			"true",
-			"1",
-		}, strings.ToLower(useMembersIntent))
+		c.UseMembersIntent = stringToTruthy(useMembersIntent)
 	}
 
 	logLevel, ok := os.LookupEnv("BOTSU_LOG_LEVEL")
@@ -122,6 +118,12 @@ func (c *Config) LoadEnv() error {
 		if err := c.LogLevel.UnmarshalText([]byte(logLevel)); err != nil {
 			return err
 		}
+	}
+
+	noPanic, ok := os.LookupEnv("BOTSU_NO_PANIC")
+
+	if ok {
+		c.NoPanic = stringToTruthy(noPanic)
 	}
 
 	return nil
@@ -141,4 +143,13 @@ func (c *Config) Load(path string) error {
 	}
 
 	return nil
+}
+
+func stringToTruthy(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "t", "1", "yes", "y":
+		return true
+	default:
+		return false
+	}
 }

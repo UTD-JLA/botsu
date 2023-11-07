@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/bwmarrin/discordgo"
@@ -19,6 +20,7 @@ type Bot struct {
 	createdCommands []*discordgo.ApplicationCommand
 	destroyOnClose  bool
 	guildRepo       *guilds.GuildRepository
+	noPanic         bool
 }
 
 func NewBot(logger *slog.Logger, guildRepo *guilds.GuildRepository) *Bot {
@@ -58,11 +60,24 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 
 	defer ctx.Cancel()
 
+	if b.noPanic {
+		defer func() {
+			if r := recover(); r != nil {
+				stack := debug.Stack()
+				ctx.Logger.Error("Panic occurred", slog.Any("panic", r), slog.Any("stack", string(stack)))
+				_, err := ctx.RespondOrFollowup(unexpectedErrorMessage, false)
+
+				if err != nil {
+					ctx.Logger.Error("Failed to send error message", slog.String("err", err.Error()))
+				}
+			}
+		}()
+	}
+
 	err := b.commands.Handle(ctx)
 	if err != nil {
 		ctx.Logger.Error("Failed to handle interaction", slog.String("err", err.Error()))
 
-		// if this is a command, and we haven't responded yet, respond with an error
 		if ctx.IsCommand() {
 			_, err = ctx.RespondOrFollowup(unexpectedErrorMessage, false)
 
@@ -79,6 +94,11 @@ func (b *Bot) onMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemov
 	if err != nil {
 		b.logger.Error("Failed to remove member", slog.String("err", err.Error()))
 	}
+}
+
+func (b *Bot) SetNoPanic(noPanic bool) {
+	b.logger.Debug("Setting no panic", slog.Bool("no_panic", noPanic))
+	b.noPanic = noPanic
 }
 
 func (b *Bot) SetDestroyCommandsOnClose(destroy bool) {

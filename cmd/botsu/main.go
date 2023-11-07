@@ -293,6 +293,7 @@ func main() {
 	guildRepo := guilds.NewGuildRepository(pool)
 
 	bot := bot.NewBot(logger.WithGroup("bot"), guildRepo)
+	bot.SetNoPanic(config.NoPanic)
 
 	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher, vnSearcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
