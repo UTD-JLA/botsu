@@ -11,6 +11,7 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/kkdai/youtube/v2 v2.8.5-0.20230911080230-31bf9e266484
 	github.com/klauspost/compress v1.15.11
+	github.com/lmittmann/tint v1.0.3
 	github.com/pelletier/go-toml/v2 v2.1.0
 	github.com/stretchr/testify v1.8.4
 	github.com/wader/goutubedl v0.0.0-20230817095831-89e825670ccd
@@ -49,7 +50,6 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/lib/pq v1.10.2 // indirect
-	github.com/lmittmann/tint v1.0.3 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
