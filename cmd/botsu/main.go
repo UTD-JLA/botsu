@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path"
 	"syscall"
+	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
@@ -28,9 +29,17 @@ import (
 	"github.com/lmittmann/tint"
 )
 
-var configPath = flag.String("config", "config.toml", "Path to config file")
-var migrationSource = flag.String("migrations", "", "Path to migrations")
-var enableProfiling = flag.Bool("profiling", false, "Enable profiling")
+var (
+	configPath      = flag.String("config", "config.toml", "Path to config file")
+	migrationSource = flag.String("migrations", "", "Path to migrations")
+	enableProfiling = flag.Bool("profiling", false, "Enable profiling")
+)
+
+const (
+	staleAODBThreshold  = 7 * 24 * time.Hour
+	staleAniDBThreshold = 7 * 24 * time.Hour
+	staleVNDBThreshold  = 7 * 24 * time.Hour
+)
 
 func main() {
 	flag.Parse()
@@ -86,7 +95,7 @@ func main() {
 	dataChan := make(chan []*anime.AniDBEntry, 1)
 	aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
 
-	_, err = os.Stat(config.AoDBPath)
+	stat, err := os.Stat(config.AoDBPath)
 
 	if os.IsNotExist(err) {
 		logger.Info("Downloading anime offline database")
@@ -107,11 +116,13 @@ func main() {
 	} else if err != nil {
 		logger.Error("Unable to stat anime offline database", slog.String("err", err.Error()))
 		os.Exit(1)
+	} else if time.Since(stat.ModTime()) > staleAODBThreshold {
+		logger.Warn("Anime offline database is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
 	}
 
 	logger.Info("Reading anidb dump file", slog.String("path", config.AniDBDumpPath))
 
-	_, err = os.Stat(config.AniDBDumpPath)
+	stat, err = os.Stat(config.AniDBDumpPath)
 
 	if os.IsNotExist(err) {
 		logger.Info("Downloading anidb dump")
@@ -131,6 +142,8 @@ func main() {
 	} else if err != nil {
 		logger.Error("Unable to stat anidb dump", slog.String("err", err.Error()))
 		os.Exit(1)
+	} else if time.Since(stat.ModTime()) > staleAniDBThreshold {
+		logger.Warn("AniDB dump is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
 	}
 
 	logger.Info("Reading vndb dump file", slog.String("path", config.VNDBDumpPath))
@@ -156,6 +169,8 @@ func main() {
 	} else if err != nil {
 		logger.Error("Unable to stat vndb dump", slog.String("err", err.Error()))
 		os.Exit(1)
+	} else if time.Since(stat.ModTime()) > staleVNDBThreshold {
+		logger.Warn("VNDB dump is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
 	}
 
 	searcher := anime.NewAnimeSearcher()
