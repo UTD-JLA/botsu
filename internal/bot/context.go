@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/bwmarrin/discordgo"
@@ -11,6 +12,8 @@ import (
 var ErrResponseNotSent = errors.New("response not yet sent")
 
 type InteractionContext struct {
+	Logger *slog.Logger
+
 	s *discordgo.Session
 	i *discordgo.InteractionCreate
 	// cancels when interaction token is invalidated
@@ -23,15 +26,21 @@ type InteractionContext struct {
 	deferred          bool
 }
 
-func NewInteractionContext(s *discordgo.Session, i *discordgo.InteractionCreate, ctx context.Context) *InteractionContext {
-	interactionDeadlineContext, cancel := context.WithDeadline(ctx, discordutil.GetInteractionFollowupDeadline(i.Interaction))
-	responseDeadlineContext, cancel2 := context.WithDeadline(ctx, discordutil.GetInteractionResponseDeadline(i.Interaction))
+func NewInteractionContext(logger *slog.Logger, s *discordgo.Session, i *discordgo.InteractionCreate, ctx context.Context) *InteractionContext {
+	responseDeadline := discordutil.GetInteractionResponseDeadline(i.Interaction)
+	interactionDeadline := discordutil.GetInteractionFollowupDeadline(i.Interaction)
 
-	// fmt.Println("Current time:", time.Now())
-	// fmt.Println("Interaction deadline:", discordutil.GetInteractionResponseDeadline(i.Interaction))
-	// fmt.Println("Followup deadline:", discordutil.GetInteractionFollowupDeadline(i.Interaction))
+	interactionDeadlineContext, cancel := context.WithDeadline(ctx, interactionDeadline)
+	responseDeadlineContext, cancel2 := context.WithDeadline(ctx, responseDeadline)
+
+	logger.Debug(
+		"Creating interaction context",
+		slog.Time("interaction_deadline", interactionDeadline),
+		slog.Time("response_deadline", responseDeadline),
+	)
 
 	return &InteractionContext{
+		Logger:            logger,
 		s:                 s,
 		i:                 i,
 		ctx:               interactionDeadlineContext,

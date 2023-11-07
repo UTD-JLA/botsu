@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"log/slog"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -28,7 +30,9 @@ func (c CommandCollection) Add(data *discordgo.ApplicationCommand, handler Comma
 
 func (c CommandCollection) Handle(ctx *InteractionContext) error {
 	cmd, ok := c[ctx.Interaction().ApplicationCommandData().Name]
+
 	if !ok {
+		ctx.Logger.Warn("Command not found", slog.String("command", ctx.Interaction().ApplicationCommandData().Name))
 		return nil
 	}
 

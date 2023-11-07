@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"slices"
@@ -17,6 +18,7 @@ type Config struct {
 	VNDBDumpPath     string         `toml:"vndb_dump_path"`
 	Token            string         `toml:"token"`
 	UseMembersIntent bool           `toml:"use_members_intent"`
+	LogLevel         slog.Level     `toml:"log_level"`
 }
 
 type DatabaseConfig struct {
@@ -112,6 +114,12 @@ func (c *Config) LoadEnv() error {
 			"true",
 			"1",
 		}, strings.ToLower(useMembersIntent))
+	}
+
+	logLevel, ok := os.LookupEnv("BOTSU_LOG_LEVEL")
+
+	if ok {
+		c.LogLevel.UnmarshalText([]byte(logLevel))
 	}
 
 	return nil

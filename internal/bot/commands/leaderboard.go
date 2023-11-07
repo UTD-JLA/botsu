@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
@@ -263,7 +263,7 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 			deadMembers = append(deadMembers, m.UserID)
 			usr, err := s.User(m.UserID)
 			if err != nil {
-				log.Printf("Error getting user %s: %v\n", m.UserID, err)
+				ctx.Logger.Warn("Error getting user", slog.String("err", err.Error()), slog.String("user_id", m.UserID))
 				continue
 			}
 
@@ -276,11 +276,11 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		embed.AddField(title, value, false)
 	}
 
-	err = c.g.RemoveMembers(context.Background(), i.GuildID, deadMembers)
-
-	if err != nil {
-		log.Printf("Error removing dead members: %v\n", err)
-	}
+	go func() {
+		if err = c.g.RemoveMembers(context.Background(), i.GuildID, deadMembers); err != nil {
+			ctx.Logger.Error("Failed to remove members", slog.String("err", err.Error()))
+		}
+	}()
 
 	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},

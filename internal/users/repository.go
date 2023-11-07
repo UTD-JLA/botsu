@@ -3,7 +3,7 @@ package users
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -111,12 +111,10 @@ func (r *UserRepository) FindOrCreate(ctx context.Context, id string) (*User, er
 			user = NewUser(id)
 			err = r.Create(ctx, user)
 			if err != nil {
-				log.Printf("Error creating user: %v", err)
-				return nil, err
+				return nil, fmt.Errorf("failed to create user: %w", err)
 			}
 		} else {
-			log.Printf("Error finding user: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to find user: %w", err)
 		}
 	}
 

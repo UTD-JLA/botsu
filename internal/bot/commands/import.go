@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -261,7 +261,7 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 	}
 
 	if err := c.r.ImportMany(ctx, as); err != nil {
-		log.Println(err)
+		cmd.Logger.Error("Failed to import activities", slog.String("err", err.Error()))
 
 		_, err = cmd.Followup(&discordgo.WebhookParams{
 			Content: "Data was not fully imported!",

@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/bwmarrin/discordgo"
@@ -13,6 +13,7 @@ var unexpectedErrorMessage = &discordgo.WebhookParams{
 }
 
 type Bot struct {
+	logger          *slog.Logger
 	session         *discordgo.Session
 	commands        CommandCollection
 	createdCommands []*discordgo.ApplicationCommand
@@ -20,53 +21,73 @@ type Bot struct {
 	guildRepo       *guilds.GuildRepository
 }
 
-func NewBot(guildRepo *guilds.GuildRepository) *Bot {
+func NewBot(logger *slog.Logger, guildRepo *guilds.GuildRepository) *Bot {
 	return &Bot{
+		logger:    logger,
 		commands:  NewCommandCollection(),
 		guildRepo: guildRepo,
 	}
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
-	log.Println("Bot is ready")
+	b.logger.Info("Bot is ready", slog.String("user", r.User.String()))
 }
 
 func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	b.logger.Debug(
+		"Interaction received",
+		slog.String("interaction", i.Interaction.ID),
+		slog.String("user", i.Interaction.User.String()),
+		slog.String("guild", i.Interaction.GuildID),
+		slog.String("type", i.Type.String()),
+	)
 	if i.Type != discordgo.InteractionApplicationCommand && i.Type != discordgo.InteractionApplicationCommandAutocomplete {
 		return
 	}
 
-	ctx := NewInteractionContext(s, i, context.Background())
+	subLogger := b.logger.
+		WithGroup("interaction").
+		With(slog.String("id", i.Interaction.ID)).
+		With(slog.String("user", i.Interaction.User.String())).
+		With(slog.String("guild", i.Interaction.GuildID)).
+		With(slog.String("type", i.Type.String())).
+		With(slog.String("command", i.ApplicationCommandData().Name)).
+		WithGroup("handler")
+
+	ctx := NewInteractionContext(subLogger, s, i, context.Background())
 
 	defer ctx.Cancel()
 
 	err := b.commands.Handle(ctx)
 	if err != nil {
-		log.Println("Error handling command", err)
+		ctx.Logger.Error("Failed to handle interaction", slog.String("err", err.Error()))
 
 		// if this is a command, and we haven't responded yet, respond with an error
-		if ctx.IsCommand() && ctx.Deferred() {
+		if ctx.IsCommand() {
 			_, err = ctx.RespondOrFollowup(unexpectedErrorMessage, false)
 
 			if err != nil {
-				log.Println("Failed to respond to command", err)
+				ctx.Logger.Error("Failed to send error message", slog.String("err", err.Error()))
 			}
 		}
 	}
 }
 
 func (b *Bot) onMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	b.logger.Debug("Member left", slog.String("guild", m.GuildID), slog.String("user", m.User.String()))
 	err := b.guildRepo.RemoveMembers(context.Background(), m.GuildID, []string{m.User.ID})
 	if err != nil {
-		log.Println("Failed to delete guild member", err)
+		b.logger.Error("Failed to remove member", slog.String("err", err.Error()))
 	}
 }
 
 func (b *Bot) SetDestroyCommandsOnClose(destroy bool) {
+	b.logger.Debug("Setting destroy commands on close", slog.Bool("destroy", destroy))
 	b.destroyOnClose = destroy
 }
 
 func (b *Bot) AddCommand(data *discordgo.ApplicationCommand, cmd CommandHandler) {
+	b.logger.Debug("Adding command", slog.String("command_name", data.Name))
 	b.commands.Add(data, cmd)
 }
 
@@ -82,38 +103,38 @@ func (b *Bot) Login(token string, intent discordgo.Intent) error {
 
 	s.Identify.Intents = intent
 
-	err = s.Open()
-	if err != nil {
+	if err = s.Open(); err != nil {
 		return err
 	}
 
 	b.session = s
+	b.logger.Info("Creating commands")
 
-	log.Println("Creating commands")
+	cmdData := make([]*discordgo.ApplicationCommand, 0, len(b.commands))
 
 	for _, cmd := range b.commands {
-		// if len(cmd.Data.Options) > 0 {
-		// 	fmt.Printf("%v\n", ref.DerefArray(cmd.Data.Options[0].Options))
-		// }
-		cmd, err := b.session.ApplicationCommandCreate(b.session.State.User.ID, "", cmd.Data)
-		if err != nil {
-			return err
-		}
-		b.createdCommands = append(b.createdCommands, cmd)
+		cmdData = append(cmdData, cmd.Data)
+	}
+
+	b.createdCommands, err = b.session.ApplicationCommandBulkOverwrite(b.session.State.User.ID, "", cmdData)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func (b *Bot) Close() {
+	b.logger.Debug("Close() called")
+	defer b.session.Close()
+
 	if b.destroyOnClose {
-		for _, c := range b.createdCommands {
-			err := b.session.ApplicationCommandDelete(b.session.State.User.ID, "", c.ID)
-			if err != nil {
-				log.Println("Failed to delete command", c.Name, err)
-			}
+		b.logger.Debug("Destroying commands")
+
+		_, err := b.session.ApplicationCommandBulkOverwrite(b.session.State.User.ID, "", []*discordgo.ApplicationCommand{})
+
+		if err != nil {
+			b.logger.Error("Failed to destroy commands", slog.String("err", err.Error()))
 		}
 	}
-
-	b.session.Close()
 }
