@@ -26,6 +26,7 @@ func init() {
 
 		fmt.Fprintln(flag.CommandLine.Output(), "\nConfig file:")
 		fmt.Fprintln(flag.CommandLine.Output(), "The config file is a TOML file with the following structure:")
+		fmt.Fprintln(flag.CommandLine.Output())
 		printTOMLStructure(
 			&prefixedWriter{w: flag.CommandLine.Output(), prefix: []byte("    ")},
 			NewConfig(),
@@ -78,6 +79,8 @@ func printTOMLStructure(w io.Writer, v interface{}, topLevel string) {
 			fmt.Fprintf(w, "%s = %s\n", name, f.Type.Kind())
 		}
 	}
+
+	fmt.Fprintln(w)
 
 	for tag, s := range structs {
 		printTOMLStructure(w, reflect.New(s).Interface(), tag)
