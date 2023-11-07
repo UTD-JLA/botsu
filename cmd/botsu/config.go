@@ -119,7 +119,9 @@ func (c *Config) LoadEnv() error {
 	logLevel, ok := os.LookupEnv("BOTSU_LOG_LEVEL")
 
 	if ok {
-		c.LogLevel.UnmarshalText([]byte(logLevel))
+		if err := c.LogLevel.UnmarshalText([]byte(logLevel)); err != nil {
+			return err
+		}
 	}
 
 	return nil
