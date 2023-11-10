@@ -214,7 +214,10 @@ func main() {
 		joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
 
 		for _, entry := range joined {
-			animeStore.Store(entry)
+			if err = animeStore.Store(entry); err != nil {
+				logger.Error("Unable to store anime", slog.String("err", err.Error()))
+				os.Exit(1)
+			}
 		}
 	}
 
@@ -245,7 +248,10 @@ func main() {
 		vns := vn.JoinTitlesAndData(titles, data)
 
 		for _, entry := range vns {
-			vnStore.Store(entry)
+			if err = vnStore.Store(entry); err != nil {
+				logger.Error("Unable to store vn", slog.String("err", err.Error()))
+				os.Exit(1)
+			}
 		}
 	}
 
