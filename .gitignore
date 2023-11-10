@@ -1,4 +1,6 @@
 config.toml
 *.bluge
 *.exe
-data/
+data
+!internal/data
+bin

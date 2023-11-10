@@ -10,12 +10,14 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
+	"github.com/UTD-JLA/botsu/internal/data"
 	"github.com/UTD-JLA/botsu/internal/data/anime"
 	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
@@ -91,9 +93,6 @@ func main() {
 	}
 
 	logger.Info("Reading anime database file", slog.String("path", config.AoDBPath))
-
-	dataChan := make(chan []*anime.AniDBEntry, 1)
-	aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
 
 	stat, err := os.Stat(config.AoDBPath)
 
@@ -173,10 +172,22 @@ func main() {
 		logger.Warn("VNDB dump is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
 	}
 
-	searcher := anime.NewAnimeSearcher()
+	// make sure /data/.index exists
+	if err = os.MkdirAll("data/.index", os.ModePerm); err != nil {
+		logger.Error("Unable to create directory", slog.String("err", err.Error()), slog.String("path", "data"))
+		os.Exit(1)
+	}
+
+	animeStore := data.NewDocumentStore[anime.Anime](
+		context.Background(),
+		data.NewDefaultConfig("data/.index/anime.bluge").WithSearchFields(anime.SearchFields...),
+	)
 
 	// check if index exists
-	if _, err = os.Stat("anime-index.bluge"); os.IsNotExist(err) {
+	if _, err = os.Stat("data/.index/anime.bluge"); os.IsNotExist(err) {
+		dataChan := make(chan []*anime.AniDBEntry, 1)
+		aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
+
 		logger.Info("Creating anime index")
 
 		go func() {
@@ -202,25 +213,19 @@ func main() {
 		mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
 		joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
 
-		err = searcher.CreateIndex("anime-index.bluge", joined)
-
-		if err != nil {
-			logger.Error("Unable to create index", slog.String("err", err.Error()))
-			os.Exit(1)
+		for _, entry := range joined {
+			animeStore.Store(entry)
 		}
 	}
 
-	logger.Info("Loading anime index")
-	_, err = searcher.LoadIndex("anime-index.bluge")
+	animeStore.Flush()
 
-	if err != nil {
-		logger.Error("Unable to load index", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
+	vnStore := data.NewDocumentStore[vn.VisualNovel](
+		context.Background(),
+		data.NewDefaultConfig("data/.index/vn.bluge").WithSearchFields(vn.SearchFields...),
+	)
 
-	vnSearcher := vn.NewVNSearcher()
-
-	if _, err = os.Stat("vndb-index.bluge"); os.IsNotExist(err) {
+	if _, err = os.Stat("data/.index/vn.bluge"); os.IsNotExist(err) {
 		logger.Info("Creating vndb index")
 
 		titles, err := vn.ReadVNDBTitlesFile(config.VNDBDumpPath + "/db/vn_titles")
@@ -239,20 +244,15 @@ func main() {
 
 		vns := vn.JoinTitlesAndData(titles, data)
 
-		err = vnSearcher.CreateIndex("vndb-index.bluge", vns)
-
-		if err != nil {
-			logger.Error("Unable to create index", slog.String("err", err.Error()))
-			os.Exit(1)
+		for _, entry := range vns {
+			vnStore.Store(entry)
 		}
 	}
 
-	_, err = vnSearcher.LoadIndex("vndb-index.bluge")
+	vnStore.Flush()
 
-	if err != nil {
-		logger.Error("Unable to load index", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
+	// Force GC before continuing with the rest of the setup
+	runtime.GC()
 
 	logger.Info("Connecting to database")
 
@@ -295,7 +295,7 @@ func main() {
 	bot := bot.NewBot(logger.WithGroup("bot"), guildRepo)
 	bot.SetNoPanic(config.NoPanic)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, searcher, vnSearcher))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, animeStore, vnStore))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
@@ -326,6 +326,8 @@ func main() {
 	logger.Info("Setup completed, press CTRL-C to exit")
 
 	if *enableProfiling {
+		logger.Warn("Profiling server enabled")
+
 		go func() {
 			err := http.ListenAndServe("localhost:6060", nil)
 			logger.Warn("Profiling server exited", slog.String("err", err.Error()))

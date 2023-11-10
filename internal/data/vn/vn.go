@@ -4,9 +4,23 @@ import (
 	"bufio"
 	"os"
 	"strings"
+
+	"github.com/blugelabs/bluge"
 )
 
 const VNDBImageBaseURL = "https://t.vndb.org/cv/"
+
+const (
+	SearchFieldJapaneseTitle = "japanese_title"
+	SearchFieldEnglishTitle  = "english_title"
+	SearchFieldRomajiTitle   = "romaji_title"
+)
+
+var SearchFields = []string{
+	SearchFieldJapaneseTitle,
+	SearchFieldEnglishTitle,
+	SearchFieldRomajiTitle,
+}
 
 type VisualNovel struct {
 	ID            string
@@ -14,6 +28,25 @@ type VisualNovel struct {
 	EnglishTitle  string
 	RomajiTitle   string
 	Image         string
+}
+
+func (vn VisualNovel) Marshal() (*bluge.Document, error) {
+	doc := bluge.NewDocument(vn.ID)
+
+	doc.AddField(bluge.NewTextField(SearchFieldJapaneseTitle, vn.JapaneseTitle).StoreValue())
+	doc.AddField(bluge.NewTextField(SearchFieldEnglishTitle, vn.EnglishTitle).StoreValue())
+	doc.AddField(bluge.NewTextField(SearchFieldRomajiTitle, vn.RomajiTitle).StoreValue())
+
+	return doc, nil
+}
+
+func (vn *VisualNovel) Unmarshal(fields map[string][]byte) error {
+	vn.ID = string(fields["_id"])
+	vn.JapaneseTitle = string(fields[SearchFieldJapaneseTitle])
+	vn.EnglishTitle = string(fields[SearchFieldEnglishTitle])
+	vn.RomajiTitle = string(fields[SearchFieldRomajiTitle])
+
+	return nil
 }
 
 func (vn *VisualNovel) ImageURL() string {
@@ -55,7 +88,6 @@ func JoinTitlesAndData(titles map[string]*VNTitle, data []*VNData) []*VisualNove
 	return vns
 }
 
-// TODO: include more
 type VNData struct {
 	ID    string
 	Image string

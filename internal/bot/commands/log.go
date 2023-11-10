@@ -10,6 +10,7 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
+	"github.com/UTD-JLA/botsu/internal/data"
 	"github.com/UTD-JLA/botsu/internal/data/anime"
 	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
@@ -280,12 +281,18 @@ type LogCommand struct {
 	activityRepo  *activities.ActivityRepository
 	userRepo      *users.UserRepository
 	guildRepo     *guilds.GuildRepository
-	animeSearcher *anime.AnimeSearcher
-	vnSearcher    *vn.VNSearcher
+	animeSearcher *data.DocumentStore[anime.Anime, *anime.Anime]
+	vnSearcher    *data.DocumentStore[vn.VisualNovel, *vn.VisualNovel]
 	ytClient      youtube.Client
 }
 
-func NewLogCommand(ar *activities.ActivityRepository, ur *users.UserRepository, gr *guilds.GuildRepository, as *anime.AnimeSearcher, vs *vn.VNSearcher) *LogCommand {
+func NewLogCommand(
+	ar *activities.ActivityRepository,
+	ur *users.UserRepository,
+	gr *guilds.GuildRepository,
+	as *data.DocumentStore[anime.Anime, *anime.Anime],
+	vs *data.DocumentStore[vn.VisualNovel, *vn.VisualNovel],
+) *LogCommand {
 	return &LogCommand{
 		activityRepo:  ar,
 		userRepo:      ur,
@@ -1027,23 +1034,23 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 			var fieldID string
 
 			switch result.Field {
-			case anime.SearchFieldEnglishTitle:
-				title = result.Anime.EnglishOfficialTitle
+			case anime.SearchFieldEnglishOfficialTitle:
+				title = result.Value.EnglishOfficialTitle
 				fieldID = "en"
-			case anime.SearchFieldJapaneseTitle:
-				title = result.Anime.JapaneseOfficialTitle
+			case anime.SearchFieldJapaneseOfficialTitle:
+				title = result.Value.JapaneseOfficialTitle
 				fieldID = "jp"
-			case anime.SearchFieldXJatTitle:
-				title = result.Anime.RomajiOfficialTitle
+			case anime.SearchFieldRomajiOfficialTitle:
+				title = result.Value.RomajiOfficialTitle
 				fieldID = "x-jat"
 			default:
-				title = result.Anime.PrimaryTitle
+				title = result.Value.PrimaryTitle
 				fieldID = "primary"
 			}
 
 			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 				Name:  truncateLongString(title, 100),
-				Value: fmt.Sprintf("${%s:%s}", result.Anime.ID, fieldID),
+				Value: fmt.Sprintf("${%s:%s}", result.Value.ID, fieldID),
 			})
 		}
 	} else if mediaType == activities.ActivityMediaTypeVisualNovel {
@@ -1059,19 +1066,19 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 
 			switch result.Field {
 			case vn.SearchFieldJapaneseTitle:
-				title = result.VN.JapaneseTitle
+				title = result.Value.JapaneseTitle
 				fieldID = "jp"
 			case vn.SearchFieldEnglishTitle:
-				title = result.VN.EnglishTitle
+				title = result.Value.EnglishTitle
 				fieldID = "en"
-			case vn.SearchFieldRomaji:
-				title = result.VN.RomajiTitle
+			case vn.SearchFieldRomajiTitle:
+				title = result.Value.RomajiTitle
 				fieldID = "romaji"
 			}
 
 			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 				Name:  truncateLongString(title, 100),
-				Value: fmt.Sprintf("${%s:%s}", result.VN.ID, fieldID),
+				Value: fmt.Sprintf("${%s:%s}", result.Value.ID, fieldID),
 			})
 		}
 	}
@@ -1093,7 +1100,7 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 
 	id, field := parts[0], parts[1]
 
-	anime, err := c.animeSearcher.GetAnime(context.TODO(), id)
+	anime, err := c.animeSearcher.Get(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err
@@ -1117,7 +1124,7 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, s
 
 	id, field := parts[0], parts[1]
 
-	vn, err := c.vnSearcher.GetVN(context.TODO(), id)
+	vn, err := c.vnSearcher.Get(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err
