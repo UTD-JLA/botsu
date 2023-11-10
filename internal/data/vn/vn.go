@@ -36,6 +36,7 @@ func (vn VisualNovel) Marshal() (*bluge.Document, error) {
 	doc.AddField(bluge.NewTextField(SearchFieldJapaneseTitle, vn.JapaneseTitle).StoreValue())
 	doc.AddField(bluge.NewTextField(SearchFieldEnglishTitle, vn.EnglishTitle).StoreValue())
 	doc.AddField(bluge.NewTextField(SearchFieldRomajiTitle, vn.RomajiTitle).StoreValue())
+	doc.AddField(bluge.NewStoredOnlyField("image", []byte(vn.Image)))
 
 	return doc, nil
 }
@@ -45,6 +46,7 @@ func (vn *VisualNovel) Unmarshal(fields map[string][]byte) error {
 	vn.JapaneseTitle = string(fields[SearchFieldJapaneseTitle])
 	vn.EnglishTitle = string(fields[SearchFieldEnglishTitle])
 	vn.RomajiTitle = string(fields[SearchFieldRomajiTitle])
+	vn.Image = string(fields["image"])
 
 	return nil
 }
