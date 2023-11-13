@@ -769,11 +769,6 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		return err
 	}
 
-	shareUrl, err := removeTimeParameter(URL)
-	if err != nil {
-		return err
-	}
-
 	durationString := activity.Duration.String()
 
 	if activity.Duration != video.Duration {
@@ -795,17 +790,27 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 			discordgo.Button{
 				Label: "Video",
 				Style: discordgo.LinkButton,
-				URL:   shareUrl,
+				URL:   URL,
 			},
 		},
 	}
 
 	if video.Platform == "youtube" {
-		row.Components = append(row.Components, discordgo.Button{
-			Label: "Channel",
-			Style: discordgo.LinkButton,
-			URL:   fmt.Sprintf("https://www.youtube.com/channel/%s", video.ChannelID),
-		})
+		// make new shorturl to get rid of parameters (such as t and sid)
+		shortURL := fmt.Sprintf("https://youtu.be/%s", video.ID)
+
+		row.Components = []discordgo.MessageComponent{
+			discordgo.Button{
+				Label: "Video",
+				Style: discordgo.LinkButton,
+				URL:   shortURL,
+			},
+			discordgo.Button{
+				Label: "Channel",
+				Style: discordgo.LinkButton,
+				URL:   fmt.Sprintf("https://www.youtube.com/channel/%s", video.ChannelID),
+			},
+		}
 	}
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
@@ -1066,18 +1071,4 @@ func truncateLongString(s string, maxLen int) string {
 
 func isAutocompletedEntry(input string) bool {
 	return len(input) > 0 && strings.HasPrefix(input, "${") && strings.HasSuffix(input, "}")
-}
-
-func removeTimeParameter(urlString string) (string, error) {
-	u, err := url.Parse(urlString)
-
-	if err != nil {
-		return "", err
-	}
-
-	q := u.Query()
-	q.Del("t")
-	u.RawQuery = q.Encode()
-
-	return u.String(), nil
 }
