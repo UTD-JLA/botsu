@@ -23,6 +23,11 @@ import (
 	"github.com/kkdai/youtube/v2"
 )
 
+var (
+	errInvalidDateInput              = errors.New("invalid date")
+	errInvalidMediaAutocompleteInput = errors.New("invalid media autocomplete input")
+)
+
 var manualCommandOptions = []*discordgo.ApplicationCommandOption{
 	{
 		Name:        "name",
@@ -435,46 +440,15 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 	activity.MediaType = ref.New(activities.ActivityMediaTypeAnime)
 	activity.UserID = userID
 
-	enteredDate := discordutil.GetStringOption(args, "date")
-	date := time.Now()
-
-	if enteredDate != nil {
-		user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-		if err != nil {
-			return err
-		}
-
-		guildID := ctx.Interaction().GuildID
-		timezone := carbon.UTC
-
-		if user != nil && user.Timezone != nil {
-			timezone = *user.Timezone
-		} else if guildID != "" {
-			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
-
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-
-			if guild != nil && guild.Timezone != nil {
-				timezone = *guild.Timezone
-			}
-		}
-
-		c := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-		if c.Error != nil {
-			_, err := ctx.Followup(&discordgo.WebhookParams{
+	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
+		if errors.Is(err, errInvalidDateInput) {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
-			return err
 		}
 
-		date = c.ToStdTime()
+		return err
 	}
-
-	activity.Date = date
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
 
@@ -577,46 +551,15 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
-	enteredDate := discordutil.GetStringOption(args, "date")
-	date := time.Now()
-
-	if enteredDate != nil {
-		user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-		if err != nil {
-			return err
-		}
-
-		guildID := ctx.Interaction().GuildID
-		timezone := carbon.UTC
-
-		if user != nil && user.Timezone != nil {
-			timezone = *user.Timezone
-		} else if guildID != "" {
-			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
-
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-
-			if guild != nil && guild.Timezone != nil {
-				timezone = *guild.Timezone
-			}
-		}
-
-		c := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-		if c.Error != nil {
-			_, err := ctx.Followup(&discordgo.WebhookParams{
+	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
+		if errors.Is(err, errInvalidDateInput) {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
-			return err
 		}
 
-		date = c.ToStdTime()
+		return err
 	}
-
-	activity.Date = date
 
 	if err = c.activityRepo.Create(ctx.Context(), activity); err != nil {
 		return err
@@ -726,46 +669,15 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
-	enteredDate := discordutil.GetStringOption(args, "date")
-	date := time.Now()
-
-	if enteredDate != nil {
-		user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-		if err != nil {
-			return err
-		}
-
-		guildID := ctx.Interaction().GuildID
-		timezone := carbon.UTC
-
-		if user != nil && user.Timezone != nil {
-			timezone = *user.Timezone
-		} else if guildID != "" {
-			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
-
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-
-			if guild != nil && guild.Timezone != nil {
-				timezone = *guild.Timezone
-			}
-		}
-
-		c := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-		if c.Error != nil {
-			_, err := ctx.Followup(&discordgo.WebhookParams{
+	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
+		if errors.Is(err, errInvalidDateInput) {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
-			return err
 		}
 
-		date = c.ToStdTime()
+		return err
 	}
-
-	activity.Date = date
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
 
@@ -831,45 +743,15 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 	activity.UserID = userID
 	activity.Meta = video
 
-	enteredDate := discordutil.GetStringOption(args, "date")
-	date := time.Now()
-
-	if enteredDate != nil {
-		user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-		if err != nil {
-			return err
-		}
-
-		guildID := ctx.Interaction().GuildID
-		timezone := carbon.UTC
-
-		if user != nil && user.Timezone != nil {
-			timezone = *user.Timezone
-		} else if guildID != "" {
-			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
-
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-
-			if guild != nil && guild.Timezone != nil {
-				timezone = *guild.Timezone
-			}
-		}
-
-		c := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-		if c.Error != nil {
-			_, err := ctx.Followup(&discordgo.WebhookParams{
+	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
+		if errors.Is(err, errInvalidDateInput) {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
-			return err
 		}
 
-		date = c.ToStdTime()
+		return err
 	}
-	activity.Date = date
 
 	if discordutil.GetUintOption(args, "duration") != nil {
 		durationOption, err := discordutil.GetRequiredUintOption(args, "duration")
@@ -959,46 +841,16 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 	activity.MediaType = discordutil.GetStringOption(args, "media-type")
 	activity.UserID = userID
 
-	enteredDate := discordutil.GetStringOption(args, "date")
-	date := time.Now()
-
-	if enteredDate != nil {
-		user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-		if err != nil {
-			return err
-		}
-
-		guildID := ctx.Interaction().GuildID
-		timezone := carbon.UTC
-
-		if user != nil && user.Timezone != nil {
-			timezone = *user.Timezone
-		} else if guildID != "" {
-			guild, err := c.guildRepo.FindByID(ctx.Context(), guildID)
-
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-
-			if guild != nil && guild.Timezone != nil {
-				timezone = *guild.Timezone
-			}
-		}
-
-		c := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-		if c.Error != nil {
-			_, err := ctx.Followup(&discordgo.WebhookParams{
+	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
+		if errors.Is(err, errInvalidDateInput) {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
-			return err
 		}
 
-		date = c.ToStdTime()
+		return err
 	}
 
-	activity.Date = date
 	err = c.activityRepo.Create(ctx.Context(), activity)
 
 	if err != nil {
@@ -1088,14 +940,14 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 
 func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, string, error) {
 	if !isAutocompletedEntry(input) {
-		return nil, "", errors.New("invalid input")
+		return nil, "", errInvalidMediaAutocompleteInput
 	}
 
 	idAndField := input[2 : len(input)-1]
 
 	parts := strings.Split(idAndField, ":")
 	if len(parts) != 2 {
-		return nil, "", errors.New("invalid input")
+		return nil, "", errInvalidMediaAutocompleteInput
 	}
 
 	id, field := parts[0], parts[1]
@@ -1111,7 +963,7 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 
 func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, string, error) {
 	if !isAutocompletedEntry(input) {
-		return nil, "", errors.New("invalid input")
+		return nil, "", errInvalidMediaAutocompleteInput
 	}
 
 	idAndField := input[2 : len(input)-1]
@@ -1119,7 +971,7 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, s
 	parts := strings.Split(idAndField, ":")
 
 	if len(parts) != 2 {
-		return nil, "", errors.New("invalid input")
+		return nil, "", errInvalidMediaAutocompleteInput
 	}
 
 	id, field := parts[0], parts[1]
@@ -1131,6 +983,55 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, s
 	}
 
 	return vn, field, nil
+}
+
+func (c *LogCommand) parseDateOption(
+	ctx *bot.InteractionContext,
+	args []*discordgo.ApplicationCommandInteractionDataOption,
+) (date time.Time, err error) {
+	date = time.Now()
+	enteredDate := discordutil.GetStringOption(args, "date")
+
+	if enteredDate == nil {
+		return
+	}
+
+	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
+
+	user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
+
+	if err != nil {
+		return
+	}
+
+	timezone := carbon.UTC
+
+	if user != nil && user.Timezone != nil {
+		timezone = *user.Timezone
+	} else if guildID != "" {
+		var guild *guilds.Guild
+		guild, err = c.guildRepo.FindByID(ctx.Context(), guildID)
+
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return
+		}
+
+		if guild != nil && guild.Timezone != nil {
+			timezone = *guild.Timezone
+		}
+	}
+
+	cb := carbon.SetTimezone(timezone).Parse(*enteredDate)
+
+	if err = cb.Error; err != nil {
+		err = fmt.Errorf("%w: %s", errInvalidDateInput, err.Error())
+		return
+	}
+
+	date = cb.ToStdTime()
+
+	return
 }
 
 func getNamedSources(sources []string) map[string]string {
