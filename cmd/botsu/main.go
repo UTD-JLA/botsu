@@ -23,19 +23,19 @@ import (
 	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
+	"github.com/UTD-JLA/botsu/migrations"
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/golang-migrate/migrate/v4/source/github"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lmittmann/tint"
 )
 
 var (
 	configPath      = flag.String("config", "config.toml", "Path to config file")
-	migrationSource = flag.String("migrations", "", "Path to migrations")
 	enableProfiling = flag.Bool("profiling", false, "Enable profiling")
+	skipMigration   = flag.Bool("skip-migration", false, "Skip automatic migration")
 )
 
 const (
@@ -257,15 +257,29 @@ func main() {
 
 	logger.Info("Connecting to database")
 
-	migrationURL := config.Database.ConnectionURL()
-	q := migrationURL.Query()
-	q.Add("sslmode", "disable")
-	migrationURL.RawQuery = q.Encode()
+	if !*skipMigration {
+		migrationURL := config.Database.ConnectionURL()
+		q := migrationURL.Query()
+		q.Add("sslmode", "disable")
+		migrationURL.RawQuery = q.Encode()
 
-	if *migrationSource != "" {
-		logger.Info("Running migrations", slog.String("source", *migrationSource))
+		// for debug purposes
+		files, err := migrations.MigrationFS.ReadDir(".")
+		if err == nil {
+			logger.Debug("Loading embedded migrations")
+			for _, f := range files {
+				logger.Debug(fmt.Sprintf("%s", f))
+			}
+		}
 
-		m, err := migrate.New(*migrationSource, migrationURL.String())
+		migrationSource, err := iofs.New(migrations.MigrationFS, ".")
+
+		if err != nil {
+			logger.Error("Unable to create migration source", slog.String("err", err.Error()))
+			os.Exit(1)
+		}
+
+		m, err := migrate.NewWithSourceInstance("migrations.MigrationFS", migrationSource, migrationURL.String())
 
 		if err != nil {
 			logger.Error("Unable to create migration", slog.String("err", err.Error()))
@@ -273,11 +287,30 @@ func main() {
 		}
 
 		err = m.Up()
+		noChange := errors.Is(err, migrate.ErrNoChange)
 
-		if err != nil {
+		if err != nil && !noChange {
 			logger.Error("Unable to run migrations", slog.String("err", err.Error()))
 			os.Exit(1)
 		}
+
+		ver, dirty, err := m.Version()
+
+		if err != nil {
+			logger.Warn("Failed to get database version")
+		}
+
+		if dirty {
+			logger.Warn("Database is dirty")
+		}
+
+		if noChange {
+			logger.Info("Database is up to date", slog.Uint64("version", uint64(ver)))
+		} else {
+			logger.Info("Database updated", slog.Uint64("version", uint64(ver)))
+		}
+	} else {
+		logger.Info("Skipping migration check")
 	}
 
 	pool, err := pgxpool.New(context.Background(), config.Database.ConnectionString())
