@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -42,6 +43,43 @@ const (
 	staleAniDBThreshold = 7 * 24 * time.Hour
 	staleVNDBThreshold  = 7 * 24 * time.Hour
 )
+
+type dataSource struct {
+	path           string
+	staleThreshold time.Duration
+	downloadFunc   func(string) error
+}
+
+func ensureDataSourceExists(logger *slog.Logger, source dataSource) (err error) {
+	logger.Info("Checking data source")
+
+	stat, err := os.Stat(source.path)
+
+	if os.IsNotExist(err) {
+		logger.Info("Downloading source")
+
+		dir := path.Dir(source.path)
+
+		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+			logger.Error("Unable to create directory", slog.String("err", err.Error()))
+			return
+		}
+
+		err = source.downloadFunc(source.path)
+
+		if err != nil {
+			logger.Error("Unable to download data", slog.String("err", err.Error()))
+			return
+		}
+	} else if err != nil {
+		logger.Error("Unable to stat file", slog.String("err", err.Error()))
+		return
+	} else if time.Since(stat.ModTime()) > source.staleThreshold {
+		logger.Warn("Data is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
+	}
+
+	return
+}
 
 func main() {
 	flag.Parse()
@@ -92,89 +130,44 @@ func main() {
 		}
 	}
 
-	logger.Info("Reading anime database file", slog.String("path", config.AoDBPath))
-
-	stat, err := os.Stat(config.AoDBPath)
-
-	if os.IsNotExist(err) {
-		logger.Info("Downloading anime offline database")
-
-		dir := path.Dir(config.AoDBPath)
-
-		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-			logger.Error("Unable to create directory", slog.String("err", err.Error()), slog.String("path", dir))
-			os.Exit(1)
-		}
-
-		err = anime.DownloadAnimeOfflineDatabase(config.AoDBPath)
-
-		if err != nil {
-			logger.Error("Unable to download anime offline database", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
-	} else if err != nil {
-		logger.Error("Unable to stat anime offline database", slog.String("err", err.Error()))
-		os.Exit(1)
-	} else if time.Since(stat.ModTime()) > staleAODBThreshold {
-		logger.Warn("Anime offline database is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
+	var sources = map[string]dataSource{
+		"aodb": {
+			path:           config.AoDBPath,
+			downloadFunc:   anime.DownloadAnimeOfflineDatabase,
+			staleThreshold: staleAODBThreshold,
+		},
+		"anidb": {
+			path:           config.AniDBDumpPath,
+			downloadFunc:   anime.DownloadAniDBDump,
+			staleThreshold: staleAniDBThreshold,
+		},
+		"vndb": {
+			path:           config.VNDBDumpPath,
+			downloadFunc:   vn.DownloadVNDBDump,
+			staleThreshold: staleVNDBThreshold,
+		},
 	}
 
-	logger.Info("Reading anidb dump file", slog.String("path", config.AniDBDumpPath))
+	errs := make(chan error, len(sources))
 
-	stat, err = os.Stat(config.AniDBDumpPath)
+	for name, source := range sources {
+		sourceLogger := logger.WithGroup(name).With(slog.String("path", source.path))
 
-	if os.IsNotExist(err) {
-		logger.Info("Downloading anidb dump")
-
-		dir := path.Dir(config.AniDBDumpPath)
-
-		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-			logger.Error("Unable to create directory", slog.String("err", err.Error()), slog.String("path", dir))
-			os.Exit(1)
-		}
-
-		err = anime.DownloadAniDBDump(config.AniDBDumpPath)
-
-		if err != nil {
-			logger.Error("Unable to download anidb dump", slog.String("err", err.Error()))
-		}
-	} else if err != nil {
-		logger.Error("Unable to stat anidb dump", slog.String("err", err.Error()))
-		os.Exit(1)
-	} else if time.Since(stat.ModTime()) > staleAniDBThreshold {
-		logger.Warn("AniDB dump is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
+		go func(src dataSource) {
+			errs <- ensureDataSourceExists(sourceLogger, src)
+		}(source)
 	}
 
-	logger.Info("Reading vndb dump file", slog.String("path", config.VNDBDumpPath))
+	errsSlice := make([]error, 0, len(sources))
 
-	_, err = os.Stat(config.VNDBDumpPath)
-
-	if os.IsNotExist(err) {
-		dir := path.Dir(config.VNDBDumpPath)
-
-		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-			logger.Error("Unable to create directory", slog.String("err", err.Error()), slog.String("path", dir))
-			os.Exit(1)
+	for range sources {
+		if err := <-errs; err != nil {
+			errsSlice = append(errsSlice, err)
 		}
-
-		logger.Info("Downloading vndb dump")
-
-		err = vn.DownloadVNDBDump(config.VNDBDumpPath)
-
-		if err != nil {
-			logger.Error("Unable to download vndb dump", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
-	} else if err != nil {
-		logger.Error("Unable to stat vndb dump", slog.String("err", err.Error()))
-		os.Exit(1)
-	} else if time.Since(stat.ModTime()) > staleVNDBThreshold {
-		logger.Warn("VNDB dump is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
 	}
 
-	// make sure /data/.index exists
-	if err = os.MkdirAll("data/.index", os.ModePerm); err != nil {
-		logger.Error("Unable to create directory", slog.String("err", err.Error()), slog.String("path", "data"))
+	if err = errors.Join(errsSlice...); err != nil {
+		logger.Error("Encountered error(s) while ensuring data sources exist, exiting")
 		os.Exit(1)
 	}
 
