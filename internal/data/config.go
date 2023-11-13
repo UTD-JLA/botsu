@@ -7,38 +7,51 @@ const (
 	defaultMaxBuffAge = time.Second
 )
 
-type StoreConfig struct {
+type storeConfig struct {
 	Path         string
 	SearchFields []string
 	MaxBuffLen   int
 	MaxBuffAge   time.Duration
 }
 
-func (c StoreConfig) WithPath(path string) StoreConfig {
-	c.Path = path
-	return c
+func (c *storeConfig) applyDefaults() {
+	if c.MaxBuffLen == 0 {
+		c.MaxBuffLen = defaultMaxBuffLen
+	}
+
+	if c.MaxBuffAge == 0 {
+		c.MaxBuffAge = defaultMaxBuffAge
+	}
 }
 
-func (c StoreConfig) WithSearchFields(fields ...string) StoreConfig {
-	c.SearchFields = fields
-	return c
+func (c *storeConfig) applyOptions(opts []Option) {
+	for _, opt := range opts {
+		opt(c)
+	}
 }
 
-func (c StoreConfig) WithMaxBuffLen(len int) StoreConfig {
-	c.MaxBuffLen = len
-	return c
+type Option func(*storeConfig)
+
+func WithPath(path string) Option {
+	return func(c *storeConfig) {
+		c.Path = path
+	}
 }
 
-func (c StoreConfig) WithMaxBuffAge(age time.Duration) StoreConfig {
-	c.MaxBuffAge = age
-	return c
+func WithSearchFields(fields ...string) Option {
+	return func(c *storeConfig) {
+		c.SearchFields = fields
+	}
 }
 
-func NewDefaultConfig(path string) StoreConfig {
-	return StoreConfig{
-		Path:         path,
-		SearchFields: []string{},
-		MaxBuffLen:   defaultMaxBuffLen,
-		MaxBuffAge:   defaultMaxBuffAge,
+func WithMaxBuffLen(len int) Option {
+	return func(c *storeConfig) {
+		c.MaxBuffLen = len
+	}
+}
+
+func WithMaxBuffAge(age time.Duration) Option {
+	return func(c *storeConfig) {
+		c.MaxBuffAge = age
 	}
 }

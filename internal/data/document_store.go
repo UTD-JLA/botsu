@@ -20,7 +20,7 @@ type Read[T any] interface {
 }
 
 type DocumentStore[T any, PT Read[T]] struct {
-	config         StoreConfig
+	config         *storeConfig
 	writer         *bluge.Writer
 	reader         *bluge.Reader
 	recordChan     chan Store
@@ -32,13 +32,16 @@ type DocumentStore[T any, PT Read[T]] struct {
 	closedSignal   chan struct{}
 }
 
-func NewDocumentStore[T any, PT Read[T]](parentCtx context.Context, cfg StoreConfig) *DocumentStore[T, PT] {
+func NewDocumentStore[T any, PT Read[T]](parentCtx context.Context, options ...Option) *DocumentStore[T, PT] {
 	s := &DocumentStore[T, PT]{
-		config:       cfg,
+		config:       &storeConfig{},
 		recordChan:   make(chan Store),
 		closedSignal: make(chan struct{}, 1),
 		parentCtx:    parentCtx,
 	}
+
+	s.config.applyDefaults()
+	s.config.applyOptions(options)
 
 	return s
 }

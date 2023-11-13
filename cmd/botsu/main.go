@@ -173,7 +173,8 @@ func main() {
 
 	animeStore := data.NewDocumentStore[anime.Anime](
 		context.Background(),
-		data.NewDefaultConfig("data/.index/anime.bluge").WithSearchFields(anime.SearchFields...),
+		data.WithPath("data/.index/anime.bluge"),
+		data.WithSearchFields(anime.SearchFields...),
 	)
 
 	// check if index exists
@@ -218,7 +219,8 @@ func main() {
 
 	vnStore := data.NewDocumentStore[vn.VisualNovel](
 		context.Background(),
-		data.NewDefaultConfig("data/.index/vn.bluge").WithSearchFields(vn.SearchFields...),
+		data.WithPath("data/.index/vn.bluge"),
+		data.WithSearchFields(vn.SearchFields...),
 	)
 
 	if _, err = os.Stat("data/.index/vn.bluge"); os.IsNotExist(err) {
