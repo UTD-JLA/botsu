@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"runtime/debug"
+	"sync"
 
 	"github.com/UTD-JLA/botsu/internal/guilds"
+	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -14,21 +16,30 @@ var unexpectedErrorMessage = &discordgo.WebhookParams{
 }
 
 type Bot struct {
-	logger          *slog.Logger
-	session         *discordgo.Session
-	commands        CommandCollection
-	createdCommands []*discordgo.ApplicationCommand
-	destroyOnClose  bool
-	guildRepo       *guilds.GuildRepository
-	noPanic         bool
+	logger                   *slog.Logger
+	session                  *discordgo.Session
+	createdCommands          []*discordgo.ApplicationCommand
+	commands                 CommandCollection
+	guildRepo                *guilds.GuildRepository
+	noPanic                  bool
+	destroyOnClose           bool
+	globalComponentCollector *discordutil.MessageComponentCollector
+	wg                       sync.WaitGroup
+	removeInteractionHandler func()
+	botContext               context.Context
+	cancelBotContext         context.CancelFunc
 }
 
 func NewBot(logger *slog.Logger, guildRepo *guilds.GuildRepository) *Bot {
-	return &Bot{
+	bot := &Bot{
 		logger:    logger,
 		commands:  NewCommandCollection(),
 		guildRepo: guildRepo,
 	}
+
+	bot.botContext, bot.cancelBotContext = context.WithCancel(context.Background())
+
+	return bot
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
@@ -56,7 +67,7 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 		With(slog.String("command", i.ApplicationCommandData().Name)).
 		WithGroup("handler")
 
-	ctx := NewInteractionContext(subLogger, s, i, context.Background())
+	ctx := NewInteractionContext(subLogger, b, s, i, b.botContext)
 
 	defer ctx.Cancel()
 
@@ -73,6 +84,9 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 			}
 		}()
 	}
+
+	b.wg.Add(1)
+	defer b.wg.Done()
 
 	err := b.commands.Handle(ctx)
 	if err != nil {
@@ -106,6 +120,15 @@ func (b *Bot) SetDestroyCommandsOnClose(destroy bool) {
 	b.destroyOnClose = destroy
 }
 
+func (b *Bot) NewMessageComponentInteractionChannel(
+	ctx context.Context,
+	msg *discordgo.Message,
+	filters ...discordutil.InteractionFilter,
+) <-chan *discordgo.InteractionCreate {
+	filter := discordutil.NewMultiFilter(filters...)
+	return b.globalComponentCollector.Collect(ctx, msg.ID, filter)
+}
+
 func (b *Bot) AddCommand(data *discordgo.ApplicationCommand, cmd CommandHandler) {
 	b.logger.Debug("Adding command", slog.String("command_name", data.Name))
 	b.commands.Add(data, cmd)
@@ -117,8 +140,9 @@ func (b *Bot) Login(token string, intent discordgo.Intent) error {
 		return err
 	}
 
+	b.globalComponentCollector = discordutil.NewMessageComponentCollector(s)
 	s.AddHandler(b.onReady)
-	s.AddHandler(b.onInteractionCreate)
+	b.removeInteractionHandler = s.AddHandler(b.onInteractionCreate)
 	s.AddHandler(b.onMemberRemove)
 
 	s.Identify.Intents = intent
@@ -146,7 +170,6 @@ func (b *Bot) Login(token string, intent discordgo.Intent) error {
 
 func (b *Bot) Close() {
 	b.logger.Debug("Close() called")
-	defer b.session.Close()
 
 	if b.destroyOnClose {
 		b.logger.Debug("Destroying commands")
@@ -157,4 +180,15 @@ func (b *Bot) Close() {
 			b.logger.Error("Failed to destroy commands", slog.String("err", err.Error()))
 		}
 	}
+
+	// Stop accepting component interactions
+	b.globalComponentCollector.Close()
+	// Stop accepting command interactions
+	b.removeInteractionHandler()
+	// Cancel bot context (parent context of all interaction contexts)
+	b.cancelBotContext()
+	// Wait for already running commands to finish
+	b.wg.Wait()
+	// Close session
+	b.session.Close()
 }

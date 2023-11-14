@@ -13,6 +13,7 @@ var ErrResponseNotSent = errors.New("response not yet sent")
 
 type InteractionContext struct {
 	Logger *slog.Logger
+	Bot    *Bot
 
 	s *discordgo.Session
 	i *discordgo.InteractionCreate
@@ -26,7 +27,13 @@ type InteractionContext struct {
 	deferred          bool
 }
 
-func NewInteractionContext(logger *slog.Logger, s *discordgo.Session, i *discordgo.InteractionCreate, ctx context.Context) *InteractionContext {
+func NewInteractionContext(
+	logger *slog.Logger,
+	bot *Bot,
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	ctx context.Context,
+) *InteractionContext {
 	responseDeadline := discordutil.GetInteractionResponseDeadline(i.Interaction)
 	interactionDeadline := discordutil.GetInteractionFollowupDeadline(i.Interaction)
 
@@ -41,6 +48,7 @@ func NewInteractionContext(logger *slog.Logger, s *discordgo.Session, i *discord
 
 	return &InteractionContext{
 		Logger:            logger,
+		Bot:               bot,
 		s:                 s,
 		i:                 i,
 		ctx:               interactionDeadlineContext,
