@@ -120,6 +120,13 @@ var videoCommandOptions = []*discordgo.ApplicationCommandOption{
 		Required:    false,
 		Options:     []*discordgo.ApplicationCommandOption{},
 	},
+	{
+		Name:        "complex-duration",
+		Type:        discordgo.ApplicationCommandOptionString,
+		Description: "Duration spent on the activity",
+		Required:    false,
+		Options:     []*discordgo.ApplicationCommandOption{},
+	},
 }
 
 var vnCommandOptions = []*discordgo.ApplicationCommandOption{
@@ -753,12 +760,24 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		return err
 	}
 
-	if discordutil.GetUintOption(args, "duration") != nil {
-		durationOption, err := discordutil.GetRequiredUintOption(args, "duration")
+	if durationMinutes := discordutil.GetUintOption(args, "duration"); durationMinutes != nil {
+		activity.Duration = time.Duration(*durationMinutes) * time.Minute
+	} else if complexDuration := discordutil.GetStringOption(args, "complex-duration"); complexDuration != nil {
+		activity.Duration, err = parseDurationComplex(*complexDuration, video.Duration)
+
 		if err != nil {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
+				Content: fmt.Sprintf("Invalid duration provided: %s", err.Error()),
+			}, false)
 			return err
 		}
-		activity.Duration = time.Duration(durationOption) * time.Minute
+
+		if activity.Duration < 0 {
+			_, err = ctx.Followup(&discordgo.WebhookParams{
+				Content: fmt.Sprintf("Expected positive duration, got %s", activity.Duration.String()),
+			}, false)
+			return err
+		}
 	} else {
 		activity.Duration = video.Duration
 	}
@@ -1036,6 +1055,58 @@ func (c *LogCommand) parseDateOption(
 
 	date = cb.ToStdTime()
 
+	return
+}
+
+// Returns difference between two durations
+// Should be in one of the following formats:
+// duration1:duration2
+// (:?)duration2 			(duration1 is inferred to be 0)
+// duration1: 				(duration2 is inferred to be upper)
+func parseDurationComplex(str string, upper time.Duration) (d time.Duration, err error) {
+	parts := strings.Split(str, ":")
+
+	// duration2
+	if len(parts) == 1 {
+		d, err = time.ParseDuration(parts[0])
+		return
+	}
+
+	if len(parts) != 2 {
+		err = errors.New("invalid duration")
+		return
+	}
+
+	if parts[0] == "" && parts[1] == "" {
+		d = upper
+		return
+	}
+
+	// :duration2
+	if parts[0] == "" {
+		d, err = time.ParseDuration(parts[1])
+		return
+	}
+
+	// duration1:
+	if parts[1] == "" {
+		d, err = time.ParseDuration(parts[0])
+		d = upper - d
+		return
+	}
+
+	// duration1:duration2
+	d1, err := time.ParseDuration(parts[0])
+	if err != nil {
+		return
+	}
+
+	d2, err := time.ParseDuration(parts[1])
+	if err != nil {
+		return
+	}
+
+	d = d2 - d1
 	return
 }
 
