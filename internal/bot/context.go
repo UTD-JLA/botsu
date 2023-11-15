@@ -131,7 +131,7 @@ func (c *InteractionContext) Respond(responseType discordgo.InteractionResponseT
 	err := c.s.InteractionRespond(c.i.Interaction, &discordgo.InteractionResponse{
 		Type: responseType,
 		Data: data,
-	})
+	}, discordgo.WithContext(c.responseCtx))
 
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (c *InteractionContext) Followup(response *discordgo.WebhookParams, wait bo
 		return nil, ErrResponseNotSent
 	}
 
-	return c.s.FollowupMessageCreate(c.i.Interaction, wait, response)
+	return c.s.FollowupMessageCreate(c.i.Interaction, wait, response, discordgo.WithContext(c.ctx))
 }
 
 func (c *InteractionContext) RespondOrFollowup(params *discordgo.WebhookParams, wait bool) (*discordgo.Message, error) {
