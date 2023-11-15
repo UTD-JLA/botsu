@@ -39,11 +39,22 @@ func NewUndoCommand(r *activities.ActivityRepository) *UndoCommand {
 func (c *UndoCommand) Handle(ctx *bot.InteractionContext) error {
 	id := discordutil.GetUintOption(ctx.Options(), "id")
 
-	if id == nil {
-		return c.undoLastActivity(ctx)
-	} else {
+	if id != nil {
 		return c.undoActivity(ctx, *id)
 	}
+
+	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	activity, err := c.r.GetLatestByUserID(ctx.ResponseContext(), userID, ctx.Interaction().GuildID)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+			Content: "You have no activities to undo.",
+		})
+	} else if err != nil {
+		return err
+	}
+
+	return c.undoActivity(ctx, activity.ID)
 }
 
 func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error {
@@ -113,7 +124,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 
 	if err != nil {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
-			Content:    ref.New("Timed out!"),
+			Content:    ref.New("Timed out."),
 			Components: &[]discordgo.MessageComponent{},
 			Embeds:     &[]*discordgo.MessageEmbed{},
 		})
@@ -134,7 +145,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 		err := ctx.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Content:    "Activity deleted!",
+				Content:    "Activity deleted.",
 				Components: []discordgo.MessageComponent{},
 				Embeds:     []*discordgo.MessageEmbed{},
 			},
@@ -145,116 +156,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 		err := ctx.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Content:    "Cancelled!",
-				Components: []discordgo.MessageComponent{},
-				Embeds:     []*discordgo.MessageEmbed{},
-			},
-		})
-
-		return err
-	} else {
-		return errors.New("invalid custom id")
-	}
-}
-
-func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
-	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
-	activity, err := c.r.GetLatestByUserID(ctx.ResponseContext(), userID, ctx.Interaction().GuildID)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "You have no activities to undo.",
-		})
-	} else if err != nil {
-		return err
-	}
-
-	embed := discordutil.NewEmbedBuilder().
-		SetTitle("Undo Activity").
-		SetDescription("Are you sure you want to undo this activity?").
-		AddField("Name", activity.Name, true).
-		AddField("Date", fmt.Sprintf("<t:%d>", activity.Date.Unix()), true).
-		AddField("Created At", fmt.Sprintf("<t:%d>", activity.CreatedAt.Unix()), true).
-		AddField("Duration", activity.Duration.String(), true).
-		SetColor(discordutil.ColorWarning).
-		SetFooter("This cannot be undone!", "").
-		Build()
-
-	row := discordgo.ActionsRow{
-		Components: []discordgo.MessageComponent{
-			discordgo.Button{
-				Label:    "Yes",
-				Style:    discordgo.DangerButton,
-				CustomID: "undo_confirm",
-			},
-			discordgo.Button{
-				Label:    "No",
-				Style:    discordgo.SecondaryButton,
-				CustomID: "undo_cancel",
-			},
-		},
-	}
-
-	err = ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-		Embeds:     []*discordgo.MessageEmbed{embed},
-		Components: []discordgo.MessageComponent{row},
-		Flags:      discordgo.MessageFlagsEphemeral,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	msg, err := ctx.Session().InteractionResponse(ctx.Interaction().Interaction)
-
-	if err != nil {
-		return err
-	}
-
-	collectionContext, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
-
-	defer cancel()
-
-	ci, err := discordutil.CollectSingleComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
-		discordutil.NewMessageFilter(msg.ID),
-		discordutil.NewUserFilter(userID),
-	))
-
-	if err != nil {
-		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
-			Content:    ref.New("Timed out!"),
-			Components: &[]discordgo.MessageComponent{},
-			Embeds:     &[]*discordgo.MessageEmbed{},
-		})
-
-		return err
-	}
-
-	ciCtx, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))
-	defer cancel()
-
-	if ci.MessageComponentData().CustomID == "undo_confirm" {
-		err = c.r.DeleteByID(ciCtx, activity.ID)
-
-		if err != nil {
-			return err
-		}
-
-		err := ctx.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    "Activity deleted!",
-				Components: []discordgo.MessageComponent{},
-				Embeds:     []*discordgo.MessageEmbed{},
-			},
-		})
-
-		return err
-	} else if ci.MessageComponentData().CustomID == "undo_cancel" {
-		err := ctx.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    "Cancelled!",
+				Content:    "Cancelled.",
 				Components: []discordgo.MessageComponent{},
 				Embeds:     []*discordgo.MessageEmbed{},
 			},
