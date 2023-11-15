@@ -97,11 +97,15 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 
 	defer cancel()
 
-	interactions := ctx.Bot.NewMessageComponentInteractionChannel(
+	interactions, err := ctx.Bot.NewMessageComponentInteractionChannel(
 		collectionContext,
 		msg,
 		discordutil.NewInteractionUserFilter(i),
 	)
+
+	if err != nil {
+		return err
+	}
 
 	for ci := range interactions {
 		ciContext, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))

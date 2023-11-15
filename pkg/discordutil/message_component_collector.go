@@ -2,20 +2,30 @@ package discordutil
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
 )
 
+// TODO: handle this case
+var ErrMessageHasHandler = errors.New("the selected message already has an associated message component interaction handler")
+
+type handlerWithFilter struct {
+	ch chan *discordgo.InteractionCreate
+	f  func(*discordgo.InteractionCreate) bool
+}
+
 type MessageComponentCollector struct {
-	channels      map[string]chan *discordgo.InteractionCreate
+	handlers      map[string]handlerWithFilter
 	removeHandler func()
 	mu            sync.Mutex
 }
 
 func NewMessageComponentCollector(s *discordgo.Session) *MessageComponentCollector {
 	cc := &MessageComponentCollector{
-		channels: make(map[string]chan *discordgo.InteractionCreate),
+		handlers: make(map[string]handlerWithFilter),
 		mu:       sync.Mutex{},
 	}
 
@@ -23,8 +33,8 @@ func NewMessageComponentCollector(s *discordgo.Session) *MessageComponentCollect
 		if i.Type == discordgo.InteractionMessageComponent {
 			cc.mu.Lock()
 			defer cc.mu.Unlock()
-			if ch, ok := cc.channels[i.Message.ID]; ok {
-				ch <- i
+			if handler, ok := cc.handlers[i.Message.ID]; ok && handler.f(i) {
+				handler.ch <- i
 			}
 		}
 	})
@@ -38,31 +48,79 @@ func (cc *MessageComponentCollector) Close() {
 
 	cc.removeHandler()
 
-	for id, ch := range cc.channels {
-		close(ch)
-		delete(cc.channels, id)
+	for id, handler := range cc.handlers {
+		close(handler.ch)
+		delete(cc.handlers, id)
 	}
 }
 
-func (cc *MessageComponentCollector) Collect(ctx context.Context, messageID string, f InteractionFilter) <-chan *discordgo.InteractionCreate {
+func (cc *MessageComponentCollector) CollectOnce(
+	ctx context.Context,
+	messageID string,
+	f InteractionFilter,
+) (i *discordgo.InteractionCreate, err error) {
+	logger := slog.Default().With(slog.String("message.id", messageID))
+	logger.Debug("Collecting single component interaction")
+
+	cc.mu.Lock()
+
+	if _, ok := cc.handlers[messageID]; ok {
+		logger.Debug("Attempted to create second message component interaction handler")
+		cc.mu.Unlock()
+		return nil, ErrMessageHasHandler
+	}
+
+	ch := make(chan *discordgo.InteractionCreate, 1)
+	cc.handlers[messageID] = handlerWithFilter{ch, f}
+	cc.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		logger.Debug("Unexpected context done (single)")
+		err = ctx.Err()
+		return
+	case i = <-ch:
+		logger.Debug("Received interaction, deleting channel (single)")
+		cc.mu.Lock()
+		delete(cc.handlers, messageID)
+		cc.mu.Unlock()
+		return
+	}
+}
+
+func (cc *MessageComponentCollector) Collect(
+	ctx context.Context,
+	messageID string,
+	f InteractionFilter,
+) (<-chan *discordgo.InteractionCreate, error) {
+	logger := slog.Default().With(slog.String("message.id", messageID))
+	logger.Debug("Collecting component interactions")
+
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 
+	if _, ok := cc.handlers[messageID]; ok {
+		logger.Debug("Attempted to create second message component interaction handler")
+		return nil, ErrMessageHasHandler
+	}
+
 	ch := make(chan *discordgo.InteractionCreate)
-	cc.channels[messageID] = ch
+	cc.handlers[messageID] = handlerWithFilter{ch, f}
 
 	go func() {
 		<-ctx.Done()
+
+		logger.Debug("Context done, removing channel")
+
 		cc.mu.Lock()
-		if ch, ok := cc.channels[messageID]; ok {
-			close(ch)
-			delete(cc.channels, messageID)
+		if handler, ok := cc.handlers[messageID]; ok {
+			close(handler.ch)
+			delete(cc.handlers, messageID)
 		}
 		cc.mu.Unlock()
-
 	}()
 
-	return ch
+	return ch, nil
 }
 
 type InteractionFilter func(i *discordgo.InteractionCreate) bool
@@ -80,18 +138,17 @@ func CollectComponentInteractions(ctx context.Context, s *discordgo.Session, f I
 	})
 
 	go func() {
-	loop:
+		defer close(ch)
+		defer removeHandler()
+
 		for {
 			select {
 			case <-ctx.Done():
-				break loop
+				return
 			case i := <-middleCh:
 				ch <- i
 			}
 		}
-
-		close(ch)
-		removeHandler()
 	}()
 
 	return ch
@@ -128,7 +185,7 @@ func NewUserFilter(userID string) InteractionFilter {
 
 func NewInteractionUserFilter(interaction *discordgo.InteractionCreate) InteractionFilter {
 	return func(i *discordgo.InteractionCreate) bool {
-		return GetInteractionUser(interaction).ID == GetInteractionUser(i).ID
+		return IsSameInteractionUser(i, interaction)
 	}
 }
 

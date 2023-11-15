@@ -124,9 +124,18 @@ func (b *Bot) NewMessageComponentInteractionChannel(
 	ctx context.Context,
 	msg *discordgo.Message,
 	filters ...discordutil.InteractionFilter,
-) <-chan *discordgo.InteractionCreate {
+) (<-chan *discordgo.InteractionCreate, error) {
 	filter := discordutil.NewMultiFilter(filters...)
 	return b.globalComponentCollector.Collect(ctx, msg.ID, filter)
+}
+
+func (b *Bot) CollectSingleComponentInteraction(
+	ctx context.Context,
+	msg *discordgo.Message,
+	filters ...discordutil.InteractionFilter,
+) (*discordgo.InteractionCreate, error) {
+	filter := discordutil.NewMultiFilter(filters...)
+	return b.globalComponentCollector.CollectOnce(ctx, msg.ID, filter)
 }
 
 func (b *Bot) AddCommand(data *discordgo.ApplicationCommand, cmd CommandHandler) {

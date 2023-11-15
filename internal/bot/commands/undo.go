@@ -106,10 +106,13 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 	collectionContext, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
 	defer cancel()
 
-	ci, err := discordutil.CollectSingleComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
-		discordutil.NewMessageFilter(msg.ID),
-		discordutil.NewUserFilter(discordutil.GetInteractionUser(ctx.Interaction()).ID),
-	))
+	ci, err := ctx.Bot.CollectSingleComponentInteraction(
+		collectionContext,
+		msg,
+		discordutil.NewInteractionUserFilter(
+			ctx.Interaction(),
+		),
+	)
 
 	if err != nil {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
@@ -215,10 +218,7 @@ func (c *UndoCommand) undoLastActivity(ctx *bot.InteractionContext) error {
 
 	defer cancel()
 
-	ci, err := discordutil.CollectSingleComponentInteraction(collectionContext, ctx.Session(), discordutil.NewMultiFilter(
-		discordutil.NewMessageFilter(msg.ID),
-		discordutil.NewUserFilter(userID),
-	))
+	ci, err := ctx.Bot.CollectSingleComponentInteraction(collectionContext, msg, discordutil.NewUserFilter(userID))
 
 	if err != nil {
 		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
