@@ -166,9 +166,9 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 
 		if errorMsg != "" {
-			_, err := s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+			_, err := ctx.Followup(&discordgo.WebhookParams{
 				Content: errorMsg,
-			})
+			}, false)
 
 			return err
 		}
@@ -235,6 +235,8 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		select {
 		case <-time.After(5 * time.Second):
 			return errors.New("timed out waiting for guild members")
+		case <-ctx.Context().Done():
+			return ctx.Context().Err()
 		case members := <-memberChunk:
 			for _, m := range members {
 				foundMembers[m.User.ID] = m
@@ -282,9 +284,9 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 	}()
 
-	_, err = s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
+	_, err = ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.Build()},
-	})
+	}, false)
 
 	return err
 }

@@ -13,6 +13,7 @@ var ErrResponseNotSent = errors.New("response not yet sent")
 
 type InteractionContext struct {
 	Logger *slog.Logger
+	Bot    *Bot
 
 	s *discordgo.Session
 	i *discordgo.InteractionCreate
@@ -26,7 +27,13 @@ type InteractionContext struct {
 	deferred          bool
 }
 
-func NewInteractionContext(logger *slog.Logger, s *discordgo.Session, i *discordgo.InteractionCreate, ctx context.Context) *InteractionContext {
+func NewInteractionContext(
+	logger *slog.Logger,
+	bot *Bot,
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	ctx context.Context,
+) *InteractionContext {
 	responseDeadline := discordutil.GetInteractionResponseDeadline(i.Interaction)
 	interactionDeadline := discordutil.GetInteractionFollowupDeadline(i.Interaction)
 
@@ -41,6 +48,7 @@ func NewInteractionContext(logger *slog.Logger, s *discordgo.Session, i *discord
 
 	return &InteractionContext{
 		Logger:            logger,
+		Bot:               bot,
 		s:                 s,
 		i:                 i,
 		ctx:               interactionDeadlineContext,
@@ -123,7 +131,7 @@ func (c *InteractionContext) Respond(responseType discordgo.InteractionResponseT
 	err := c.s.InteractionRespond(c.i.Interaction, &discordgo.InteractionResponse{
 		Type: responseType,
 		Data: data,
-	})
+	}, discordgo.WithContext(c.responseCtx))
 
 	if err != nil {
 		return err
@@ -139,7 +147,7 @@ func (c *InteractionContext) Followup(response *discordgo.WebhookParams, wait bo
 		return nil, ErrResponseNotSent
 	}
 
-	return c.s.FollowupMessageCreate(c.i.Interaction, wait, response)
+	return c.s.FollowupMessageCreate(c.i.Interaction, wait, response, discordgo.WithContext(c.ctx))
 }
 
 func (c *InteractionContext) RespondOrFollowup(params *discordgo.WebhookParams, wait bool) (*discordgo.Message, error) {
