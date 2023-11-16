@@ -126,7 +126,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 	)
 
 	if err != nil {
-		_, err := ctx.Session().InteractionResponseEdit(ctx.Interaction().Interaction, &discordgo.WebhookEdit{
+		_, err := ctx.EditResponse(&discordgo.WebhookEdit{
 			Content:    ref.New("Timed out."),
 			Components: &[]discordgo.MessageComponent{},
 			Embeds:     &[]*discordgo.MessageEmbed{},

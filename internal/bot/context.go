@@ -167,3 +167,11 @@ func (c *InteractionContext) RespondOrFollowup(params *discordgo.WebhookParams, 
 
 	return c.Followup(params, wait)
 }
+
+func (c *InteractionContext) EditResponse(params *discordgo.WebhookEdit) (*discordgo.Message, error) {
+	if c.CanRespond() {
+		return nil, ErrResponseNotSent
+	}
+
+	return c.s.InteractionResponseEdit(c.i.Interaction, params, discordgo.WithContext(c.ctx))
+}
