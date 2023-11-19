@@ -692,3 +692,27 @@ func (r *ActivityRepository) GetAvgSpeedByMediaTypeAndUserID(ctx context.Context
 	err = row.Scan(&avg)
 	return avg, err
 }
+
+func (r *ActivityRepository) GetTotalWatchTimeOfVideoByUserID(ctx context.Context, userID, videoPlatform, videoID string) (total time.Duration, err error) {
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return
+	}
+
+	defer conn.Release()
+
+	const query = `
+		SELECT COALESCE(SUM(duration), 0)
+		FROM activities
+		WHERE user_id = $1
+		AND media_type = 'video'
+		AND meta->>'platform' = $2
+		AND meta->>'video_id' = $3
+		AND deleted_at IS NULL
+	`
+
+	row := conn.QueryRow(ctx, query, userID, videoPlatform, videoID)
+	err = row.Scan(&total)
+	return
+}

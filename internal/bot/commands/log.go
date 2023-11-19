@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -763,7 +764,26 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 	if durationMinutes := discordutil.GetUintOption(args, "duration"); durationMinutes != nil {
 		activity.Duration = time.Duration(*durationMinutes) * time.Minute
 	} else if complexDuration := discordutil.GetStringOption(args, "complex-duration"); complexDuration != nil {
-		activity.Duration, err = parseDurationComplex(*complexDuration, video.Duration)
+		var lowerDuration time.Duration
+		var tDuration time.Duration
+
+		if tSeconds, err := strconv.Atoi(u.Query().Get("t")); err == nil {
+			tDuration = time.Second * time.Duration(tSeconds)
+		}
+
+		lowerDuration, err = c.activityRepo.GetTotalWatchTimeOfVideoByUserID(ctx.Context(), userID, video.Platform, video.ID)
+
+		if err != nil {
+			return err
+		}
+
+		// TODO: lazy loading variables to prevent unneeded db queries
+		vars := map[string]time.Duration{
+			"t": tDuration,
+			"_": lowerDuration,
+		}
+
+		activity.Duration, err = parseDurationComplex(*complexDuration, video.Duration, vars)
 
 		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
@@ -1063,12 +1083,32 @@ func (c *LogCommand) parseDateOption(
 // duration1:duration2
 // (:?)duration2 			(duration1 is inferred to be 0)
 // duration1: 				(duration2 is inferred to be upper)
-func parseDurationComplex(str string, upper time.Duration) (d time.Duration, err error) {
+// or _ as duration1 for lower (ex "_:" is lower:upper)
+func parseDurationComplex(str string, upper time.Duration, vars map[string]time.Duration) (d time.Duration, err error) {
 	parts := strings.Split(str, ":")
+
+	durationOrVar := func(durationString string) (d time.Duration, err error) {
+		if len(durationString) < 1 {
+			err = errors.New("expected duration string to not be empty")
+			return
+		}
+
+		switch durationString[0] {
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '+', '.':
+			d, err = time.ParseDuration(durationString)
+		default:
+			var ok bool
+			if d, ok = vars[durationString]; !ok {
+				err = fmt.Errorf("unknown duration variable: %s", durationString)
+			}
+		}
+
+		return
+	}
 
 	// duration2
 	if len(parts) == 1 {
-		d, err = time.ParseDuration(parts[0])
+		d, err = durationOrVar(parts[0])
 		return
 	}
 
@@ -1077,6 +1117,7 @@ func parseDurationComplex(str string, upper time.Duration) (d time.Duration, err
 		return
 	}
 
+	// :
 	if parts[0] == "" && parts[1] == "" {
 		d = upper
 		return
@@ -1084,26 +1125,33 @@ func parseDurationComplex(str string, upper time.Duration) (d time.Duration, err
 
 	// :duration2
 	if parts[0] == "" {
-		d, err = time.ParseDuration(parts[1])
+		d, err = durationOrVar(parts[1])
+		if d < 0 {
+			d = upper - d.Abs()
+		}
 		return
 	}
 
 	// duration1:
 	if parts[1] == "" {
-		d, err = time.ParseDuration(parts[0])
+		d, err = durationOrVar(parts[0])
 		d = upper - d
 		return
 	}
 
 	// duration1:duration2
-	d1, err := time.ParseDuration(parts[0])
+	d1, err := durationOrVar(parts[0])
 	if err != nil {
 		return
 	}
 
-	d2, err := time.ParseDuration(parts[1])
+	d2, err := durationOrVar(parts[1])
 	if err != nil {
 		return
+	}
+
+	if d2 < 0 {
+		d2 = upper - d.Abs()
 	}
 
 	d = d2 - d1
