@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-var client = http.DefaultClient
+var HTTPClient = http.DefaultClient
 var ytInitialDataRegex = regexp.MustCompile(`var ytInitialData\s*=\s*(\{.+?\});`)
 
 var ErrInvalidChannelIdentifier = errors.New("invalid channel identifier string, you should either provide a handle (starting with '@') or an ID (starting with 'UC')")
@@ -73,7 +73,7 @@ func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err err
 		return
 	}
 
-	resp, err := client.Do(req)
+	resp, err := HTTPClient.Do(req)
 
 	if err != nil {
 		return
@@ -87,9 +87,9 @@ func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err err
 		return
 	}
 
-	data := ytInitialDataRegex.FindSubmatch(body)
-
 	var initialData ytInitialData
+
+	data := ytInitialDataRegex.FindSubmatch(body)
 
 	if len(data) < 2 {
 		err = ErrYtInitialDataNotFound
