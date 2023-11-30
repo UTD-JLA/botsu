@@ -50,7 +50,7 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 	b.logger.Debug(
 		"Interaction received",
 		slog.String("interaction", i.Interaction.ID),
-		slog.String("user", i.Interaction.User.String()),
+		slog.String("user", discordutil.GetInteractionUser(i).String()),
 		slog.String("guild", i.Interaction.GuildID),
 		slog.String("type", i.Type.String()),
 	)
@@ -61,7 +61,7 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 	subLogger := b.logger.
 		WithGroup("interaction").
 		With(slog.String("id", i.Interaction.ID)).
-		With(slog.String("user", i.Interaction.User.String())).
+		With(slog.String("user", discordutil.GetInteractionUser(i).String())).
 		With(slog.String("guild", i.Interaction.GuildID)).
 		With(slog.String("type", i.Type.String())).
 		With(slog.String("command", i.ApplicationCommandData().Name)).
