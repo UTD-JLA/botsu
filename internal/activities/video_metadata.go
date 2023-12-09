@@ -2,7 +2,7 @@ package activities
 
 import (
 	"context"
-	"net/url"
+	nurl "net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -18,6 +18,7 @@ var ytClient = youtube.Client{}
 // video is either youtube.com/watch?v=ID or youtube.com/live/ID (for live streams) or youtu.be/ID
 var ytVideoLinkRegex = regexp.MustCompile(`(?:youtube\.com/watch\?v=|youtube\.com/live/|youtu\.be/)([a-zA-Z0-9_-]+)`)
 var ytHandleRegex = regexp.MustCompile(`(^|\s|youtu.*/)@([a-zA-Z0-9_-]+)($|\s)`)
+var hashTagRegex = regexp.MustCompile(`#([^#\s\x{3000}]+)`)
 
 var channelCache = sync.Map{}
 
@@ -36,25 +37,26 @@ type VideoInfo struct {
 	ChannelName    string        `json:"channel_name"`
 	ChannelHandle  string        `json:"channel_handle"`
 	Thumbnail      string        `json:"thumbnail"`
-	LinkedChannels []string      `json:"linked_channels"`
-	LinkedVideos   []string      `json:"linked_videos"`
+	LinkedChannels []string      `json:"linked_channels,omitempty"`
+	LinkedVideos   []string      `json:"linked_videos,omitempty"`
+	HashTags       []string      `json:"hashtags,omitempty"`
 }
 
-func GetVideoInfo(ctx context.Context, URL *url.URL, forceYtdlp bool) (*VideoInfo, error) {
-	isYoutubeLink := URL.Host == "youtu.be" ||
-		URL.Host == "youtube.com" ||
-		URL.Host == "www.youtube.com" ||
-		URL.Host == "m.youtube.com"
+func GetVideoInfo(ctx context.Context, url *nurl.URL, forceYtdlp bool) (*VideoInfo, error) {
+	isYoutubeLink := url.Host == "youtu.be" ||
+		url.Host == "youtube.com" ||
+		url.Host == "www.youtube.com" ||
+		url.Host == "m.youtube.com"
 
 	if !forceYtdlp && isYoutubeLink {
-		return getInfoFromYoutube(ctx, URL)
+		return getInfoFromYoutube(ctx, url)
 	}
 
-	return getGenericVideoInfo(ctx, URL)
+	return getGenericVideoInfo(ctx, url)
 }
 
-func getGenericVideoInfo(ctx context.Context, URL *url.URL) (v *VideoInfo, err error) {
-	result, err := goutubedl.New(ctx, URL.String(), goutubedl.Options{
+func getGenericVideoInfo(ctx context.Context, url *nurl.URL) (v *VideoInfo, err error) {
+	result, err := goutubedl.New(ctx, url.String(), goutubedl.Options{
 		Type: goutubedl.TypeSingle,
 	})
 
@@ -65,7 +67,7 @@ func getGenericVideoInfo(ctx context.Context, URL *url.URL) (v *VideoInfo, err e
 	info := result.Info
 
 	v = &VideoInfo{
-		URL:           URL.String(),
+		URL:           url.String(),
 		Platform:      info.Extractor,
 		ID:            info.ID,
 		Title:         info.Title,
@@ -83,14 +85,14 @@ func getGenericVideoInfo(ctx context.Context, URL *url.URL) (v *VideoInfo, err e
 	return
 }
 
-func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err error) {
+func getInfoFromYoutube(ctx context.Context, url *nurl.URL) (v *VideoInfo, err error) {
 	var video *youtube.Video
 
-	if strings.HasPrefix(strings.ToLower(URL.Path), "/live/") {
-		parts := strings.Split(URL.Path, "/")
+	if strings.HasPrefix(strings.ToLower(url.Path), "/live/") {
+		parts := strings.Split(url.Path, "/")
 		video, err = ytClient.GetVideoContext(ctx, parts[len(parts)-1])
 	} else {
-		video, err = ytClient.GetVideoContext(ctx, URL.String())
+		video, err = ytClient.GetVideoContext(ctx, url.String())
 	}
 
 	if err != nil {
@@ -104,7 +106,7 @@ func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err er
 	}
 
 	v = &VideoInfo{
-		URL:           URL.String(),
+		URL:           url.String(),
 		Platform:      "youtube",
 		ID:            video.ID,
 		Title:         video.Title,
@@ -148,6 +150,7 @@ func getInfoFromYoutube(ctx context.Context, URL *url.URL) (v *VideoInfo, err er
 	v.Thumbnail = highestResThumbnail
 	v.LinkedChannels = findRelatedYoutubeChannels(video)
 	v.LinkedVideos = findRelatedYoutubeVideos(video)
+	v.HashTags = findHashTags(video)
 
 	return
 }
@@ -168,4 +171,13 @@ func findRelatedYoutubeVideos(video *youtube.Video) []string {
 		relatedVideos = append(relatedVideos, match[1])
 	}
 	return relatedVideos
+}
+
+func findHashTags(video *youtube.Video) []string {
+	hashTags := make([]string, 0)
+	matches := hashTagRegex.FindAllStringSubmatch(video.Description, -1)
+	for _, match := range matches {
+		hashTags = append(hashTags, "#"+strings.TrimSpace(match[1]))
+	}
+	return hashTags
 }
