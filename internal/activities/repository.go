@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	orderedmap "github.com/UTD-JLA/botsu/pkg/ordered_map"
+	"github.com/UTD-JLA/botsu/pkg/orderedmap"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

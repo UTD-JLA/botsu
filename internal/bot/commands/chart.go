@@ -19,7 +19,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
-	orderedmap "github.com/UTD-JLA/botsu/pkg/ordered_map"
+	"github.com/UTD-JLA/botsu/pkg/orderedmap"
 	"github.com/bwmarrin/discordgo"
 	"github.com/golang-module/carbon/v2"
 	"github.com/jackc/pgx/v5"
