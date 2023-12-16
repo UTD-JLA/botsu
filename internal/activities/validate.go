@@ -3,6 +3,7 @@ package activities
 import (
 	"errors"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -33,7 +34,7 @@ func ValidateExternalActivity(a *Activity) error {
 		ActivityMediaTypeVisualNovel,
 	}
 
-	if len(a.Name) > 100 {
+	if utf8.RuneCountInString(a.Name) > 100 {
 		return ErrInvalidNameLength
 	}
 
