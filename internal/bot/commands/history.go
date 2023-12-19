@@ -92,8 +92,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		return err
 	}
 
-	// collectionContext, cancel := context.WithTimeout(ctx.Context(), 3*time.Minute)
-	collectionContext, cancel := context.WithTimeout(ctx.Context(), 10*time.Second)
+	collectionContext, cancel := context.WithTimeout(ctx.Context(), 2*time.Minute)
 
 	defer cancel()
 
