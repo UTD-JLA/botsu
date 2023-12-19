@@ -285,7 +285,7 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 	}()
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
 
 	return err

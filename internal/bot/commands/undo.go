@@ -81,7 +81,7 @@ func (c *UndoCommand) undoActivity(ctx *bot.InteractionContext, id uint64) error
 		AddField("Duration", activity.Duration.String(), true).
 		SetFooter("This cannot be undone!", "").
 		SetColor(discordutil.ColorWarning).
-		Build()
+		MessageEmbed
 
 	row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{

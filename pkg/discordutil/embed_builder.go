@@ -17,38 +17,38 @@ var (
 )
 
 type EmbedBuilder struct {
-	embed *discordgo.MessageEmbed
+	*discordgo.MessageEmbed
 }
 
 func NewEmbedBuilder() *EmbedBuilder {
 	return &EmbedBuilder{
-		embed: &discordgo.MessageEmbed{},
+		MessageEmbed: &discordgo.MessageEmbed{},
 	}
 }
 
 func (b *EmbedBuilder) SetTitle(title string) *EmbedBuilder {
-	b.embed.Title = title
+	b.MessageEmbed.Title = title
 	return b
 }
 
 func (b *EmbedBuilder) SetDescription(description string) *EmbedBuilder {
-	b.embed.Description = description
+	b.MessageEmbed.Description = description
 	return b
 }
 
 func (b *EmbedBuilder) SetColor(c color.Color) *EmbedBuilder {
 	red, green, blue, _ := c.RGBA()
-	b.embed.Color = int(red>>8)<<16 + int(green>>8)<<8 + int(blue>>8)
+	b.MessageEmbed.Color = int(red>>8)<<16 + int(green>>8)<<8 + int(blue>>8)
 	return b
 }
 
 func (b *EmbedBuilder) SetColorFromInt(c int) *EmbedBuilder {
-	b.embed.Color = c
+	b.MessageEmbed.Color = c
 	return b
 }
 
 func (b *EmbedBuilder) SetAuthor(name, iconUrl, url string) *EmbedBuilder {
-	b.embed.Author = &discordgo.MessageEmbedAuthor{
+	b.MessageEmbed.Author = &discordgo.MessageEmbedAuthor{
 		Name:    name,
 		IconURL: iconUrl,
 		URL:     url,
@@ -57,7 +57,7 @@ func (b *EmbedBuilder) SetAuthor(name, iconUrl, url string) *EmbedBuilder {
 }
 
 func (b *EmbedBuilder) SetFooter(text, iconUrl string) *EmbedBuilder {
-	b.embed.Footer = &discordgo.MessageEmbedFooter{
+	b.MessageEmbed.Footer = &discordgo.MessageEmbedFooter{
 		Text:    text,
 		IconURL: iconUrl,
 	}
@@ -65,21 +65,21 @@ func (b *EmbedBuilder) SetFooter(text, iconUrl string) *EmbedBuilder {
 }
 
 func (b *EmbedBuilder) SetThumbnail(url string) *EmbedBuilder {
-	b.embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
+	b.MessageEmbed.Thumbnail = &discordgo.MessageEmbedThumbnail{
 		URL: url,
 	}
 	return b
 }
 
 func (b *EmbedBuilder) SetImage(url string) *EmbedBuilder {
-	b.embed.Image = &discordgo.MessageEmbedImage{
+	b.MessageEmbed.Image = &discordgo.MessageEmbedImage{
 		URL: url,
 	}
 	return b
 }
 
 func (b *EmbedBuilder) AddField(name, value string, inline bool) *EmbedBuilder {
-	b.embed.Fields = append(b.embed.Fields, &discordgo.MessageEmbedField{
+	b.MessageEmbed.Fields = append(b.MessageEmbed.Fields, &discordgo.MessageEmbedField{
 		Name:   name,
 		Value:  value,
 		Inline: inline,
@@ -88,15 +88,11 @@ func (b *EmbedBuilder) AddField(name, value string, inline bool) *EmbedBuilder {
 }
 
 func (b *EmbedBuilder) ClearFields() *EmbedBuilder {
-	b.embed.Fields = make([]*discordgo.MessageEmbedField, 0)
+	b.MessageEmbed.Fields = make([]*discordgo.MessageEmbedField, 0)
 	return b
 }
 
 func (b *EmbedBuilder) SetTimestamp(t time.Time) *EmbedBuilder {
-	b.embed.Timestamp = t.Format(time.RFC3339)
+	b.MessageEmbed.Timestamp = t.Format(time.RFC3339)
 	return b
-}
-
-func (b *EmbedBuilder) Build() *discordgo.MessageEmbed {
-	return b.embed
 }

@@ -40,7 +40,7 @@ func (c *ExportCommand) Handle(ctx *bot.InteractionContext) error {
 		c.historyMu.Unlock()
 
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "You can only export your activities once every day.",
+			Content: "You can only export your activities once per day.",
 		})
 	}
 

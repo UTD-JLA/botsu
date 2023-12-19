@@ -18,7 +18,7 @@ var HistoryCommandData = &discordgo.ApplicationCommand{
 		{
 			Name:        "user",
 			Type:        discordgo.ApplicationCommandOptionUser,
-			Description: "The user to view the history of. Defaults to yourself.",
+			Description: "The user to view the history of (defaults to yourself).",
 			Required:    false,
 		},
 	},
@@ -77,7 +77,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	msg, err := ctx.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
 				Components: []discordgo.MessageComponent{
@@ -142,7 +142,7 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		err := s.InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Embeds: []*discordgo.MessageEmbed{embed.Build()},
+				Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 				Components: []discordgo.MessageComponent{
 					discordgo.ActionsRow{
 						Components: []discordgo.MessageComponent{

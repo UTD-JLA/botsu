@@ -270,7 +270,7 @@ func (c *ChartCommand) handleYoutubeChannel(ctx *bot.InteractionContext, user *u
 	}
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 		Files: []*discordgo.File{
 			{
 				Name:        "chart.png",
@@ -448,7 +448,7 @@ func (c *ChartCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 		Files: []*discordgo.File{
 			{
 				Name:        "chart.png",

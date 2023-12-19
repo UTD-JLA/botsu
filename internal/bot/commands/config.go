@@ -72,13 +72,19 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		return c.handleAutocomplete(ctx)
 	}
 
+	embedBuilder := discordutil.NewEmbedBuilder().
+		SetColor(discordutil.ColorDanger).
+		SetTitle("Error!")
+
 	i := ctx.Interaction()
 	options := ctx.Options()
 
 	if len(options) != 1 {
+		embedBuilder.SetDescription("You must provide one option.")
+
 		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "You must provide one option!",
-			Flags:   discordgo.MessageFlagsEphemeral,
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
+			Flags:  discordgo.MessageFlagsEphemeral,
 		})
 	}
 
@@ -91,21 +97,21 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 		}
 
 		if !isValidTimezone(timezone) {
+			embedBuilder.SetDescription("Invalid timezone.")
+
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-				Content: "Invalid timezone",
-				Flags:   discordgo.MessageFlagsEphemeral,
+				Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
+				Flags:  discordgo.MessageFlagsEphemeral,
 			})
 		}
 
 		err = c.userRepository.SetUserTimezone(ctx.Context(), discordutil.GetInteractionUser(i).ID, timezone)
+
 		if err != nil {
 			return err
 		}
 
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "Timezone set!",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
+		embedBuilder.SetDescription("Your timezone has been updated.")
 	case "vn-speed":
 		vnSpeed, err := discordutil.GetRequiredFloatOption(options, "vn-speed")
 
@@ -118,10 +124,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "Visual novel reading speed set!",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
+		embedBuilder.SetDescription("Your visual novel reading speed has been updated.")
 	case "book-speed":
 		bookSpeed, err := discordutil.GetRequiredFloatOption(options, "book-speed")
 
@@ -135,10 +138,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "Book reading speed set!",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
+		embedBuilder.SetDescription("Your book reading speed has been updated.")
 	case "manga-speed":
 		mangaSpeed, err := discordutil.GetRequiredFloatOption(options, "manga-speed")
 
@@ -152,10 +152,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "Manga reading speed set!",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
+		embedBuilder.SetDescription("Your manga reading speed has been updated.")
 	case "daily-goal":
 		dailyGoal, err := discordutil.GetRequiredUintOption(options, "daily-goal")
 
@@ -169,13 +166,16 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
-			Content: "Daily goal set!",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
+		embedBuilder.SetDescription("Your daily goal has been updated.")
+	default:
+		return fmt.Errorf("unexpected option: %s", options[0].Name)
 	}
 
-	return fmt.Errorf("unexpected option: %s", options[0].Name)
+	embedBuilder.SetColor(discordutil.ColorSuccess)
+
+	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+		Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
+	})
 }
 
 func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {

@@ -85,30 +85,24 @@ func (c *ImportCommand) handleList(
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Recent Imports").
+		SetDescription("Use `/import undo {timestamp-id}` to undo an import.").
 		SetColor(discordutil.ColorInfo).
 		SetTimestamp(time.Now())
 
-	description := strings.Builder{}
-
-	for i, h := range history {
-		line := fmt.Sprintf(
-			"<t:%d:R> - %d activities: `%d`",
-			h.Timestamp.Unix(),
-			h.Count,
-			h.Timestamp.UnixNano(),
+	for _, h := range history {
+		embed.AddField(
+			fmt.Sprintf("%d", h.Timestamp.UnixNano()),
+			fmt.Sprintf(
+				"Imported %d activities <t:%d:R>",
+				h.Count,
+				h.Timestamp.Unix(),
+			),
+			false,
 		)
-
-		description.WriteString(line)
-
-		if i != len(history)-1 {
-			description.WriteString("\n")
-		}
 	}
 
-	embed.SetDescription(description.String())
-
 	_, err = cmd.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
 
 	return err
@@ -125,35 +119,46 @@ func (c *ImportCommand) handleUndo(
 		return err
 	}
 	timestamp, err := strconv.ParseInt(timestampString, 10, 64)
+	embedBuilder := discordutil.NewEmbedBuilder().
+		SetColor(discordutil.ColorDanger).
+		SetTitle("Error!")
 
 	if err != nil {
+		embedBuilder.SetDescription("Invalid timestamp!")
 		_, err = cmd.Followup(&discordgo.WebhookParams{
-			Content: "Invalid timestamp!",
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 		}, false)
 
 		return err
 	}
 
-	var n int64
+	var removed int64
 
-	if n, err = c.r.UndoImportByUserIDAndTimestamp(ctx, cmd.User().ID, time.Unix(0, timestamp)); err != nil {
+	if removed, err = c.r.UndoImportByUserIDAndTimestamp(ctx, cmd.User().ID, time.Unix(0, timestamp)); err != nil {
+		embedBuilder.SetDescription("Failed to undo import!")
+
 		_, err = cmd.Followup(&discordgo.WebhookParams{
-			Content: "Failed to undo import!",
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 		}, false)
 
 		return err
 	}
 
-	if n == 0 {
+	if removed == 0 {
+		embedBuilder.SetDescription("No activities were removed. Make sure you are using the correct timestamp!")
+		embedBuilder.SetColor(discordutil.ColorWarning)
 		_, err = cmd.Followup(&discordgo.WebhookParams{
-			Content: "No activities were removed.",
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 		}, false)
 
 		return err
 	}
+
+	embedBuilder.SetDescription(fmt.Sprintf("Successfully removed import! %d entries were removed.", removed))
+	embedBuilder.SetColor(discordutil.ColorSuccess)
 
 	_, err = cmd.Followup(&discordgo.WebhookParams{
-		Content: fmt.Sprintf("Successfully undone import! %d activities were removed.", n),
+		Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 	}, false)
 
 	return err
@@ -197,9 +202,15 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 	attachment := cmd.Data().Resolved.Attachments[attachmentID]
 	extension := strings.ToLower(path.Ext(attachment.Filename))
 
+	embedBuilder := discordutil.NewEmbedBuilder().
+		SetColor(discordutil.ColorDanger).
+		SetTitle("Error!")
+
 	if extension != ".gz" && extension != ".jsonl" {
 		_, err := cmd.Followup(&discordgo.WebhookParams{
-			Content: "Invalid file type!",
+			Embeds: []*discordgo.MessageEmbed{
+				embedBuilder.SetDescription("Invalid file type.").MessageEmbed,
+			},
 		}, false)
 		return err
 	}
@@ -230,6 +241,11 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 	}
 
 	if err != nil {
+		_, err = cmd.Followup(&discordgo.WebhookParams{
+			Embeds: []*discordgo.MessageEmbed{
+				embedBuilder.SetDescription("Failed to read file. Make sure it is a valid JSONL file.").MessageEmbed,
+			},
+		}, false)
 		return err
 	}
 
@@ -241,20 +257,18 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 			continue
 		}
 
-		embed := discordutil.NewEmbedBuilder().
-			SetColor(discordutil.ColorDanger).
-			SetTitle("Invalid Activity!")
+		embedBuilder.SetTitle("Invalid Activity!")
 
 		description := fmt.Sprintf(
 			"Activity with ID %d on line %d was unable to be imported: %s",
 			a.ID,
-			i,
+			i+1,
 			err)
 
-		embed.SetDescription(description)
+		embedBuilder.SetDescription(description)
 
 		_, err := cmd.Followup(&discordgo.WebhookParams{
-			Embeds: []*discordgo.MessageEmbed{embed.Build()},
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 		}, false)
 
 		return err
@@ -263,15 +277,22 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 	if err := c.r.ImportMany(ctx, as); err != nil {
 		cmd.Logger.Error("Failed to import activities", slog.String("err", err.Error()))
 
-		_, err = cmd.Followup(&discordgo.WebhookParams{
-			Content: "Data was not fully imported!",
+		embedBuilder.SetDescription("Failed to import activities. Check your import list for incomplete imports and try again later.")
+
+		_, err := cmd.Followup(&discordgo.WebhookParams{
+			Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 		}, false)
 
 		return err
 	}
 
+	embedBuilder.SetTitle("Success!")
+	embedBuilder.SetDescription(fmt.Sprintf("Successfully imported **%d** activities.\nView your import history with `/import list`.", len(as)))
+	embedBuilder.SetColor(discordutil.ColorSuccess)
+	embedBuilder.SetTimestamp(time.Now())
+
 	_, err = cmd.Followup(&discordgo.WebhookParams{
-		Content: "Done!",
+		Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
 	}, false)
 
 	return err

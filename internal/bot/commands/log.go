@@ -473,7 +473,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		SetThumbnail(thumbnail).
 		SetTimestamp(activity.Date).
 		SetColor(discordutil.ColorSuccess).
-		Build()
+		MessageEmbed
 
 	row := discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{},
@@ -586,7 +586,7 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 	}
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
 
 	return err
@@ -707,7 +707,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 	}
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.Build()},
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
 
 	return err
@@ -853,7 +853,7 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 	}
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
-		Embeds:     []*discordgo.MessageEmbed{embed.Build()},
+		Embeds:     []*discordgo.MessageEmbed{embed.MessageEmbed},
 		Components: []discordgo.MessageComponent{row},
 	}, false)
 
@@ -908,7 +908,7 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
 		SetTimestamp(activity.Date).
 		SetColor(discordutil.ColorSuccess).
-		Build()
+		MessageEmbed
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embed},
