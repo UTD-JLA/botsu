@@ -18,15 +18,21 @@ var HistoryCommandData = &discordgo.ApplicationCommand{
 	Description: "View your activity history",
 	Options: []*discordgo.ApplicationCommandOption{
 		{
-			Name:        "user",
-			Type:        discordgo.ApplicationCommandOptionUser,
-			Description: "The user to view the history of (defaults to yourself).",
-			Required:    false,
-		},
-		{
 			Name:        "show-ids",
 			Type:        discordgo.ApplicationCommandOptionBoolean,
 			Description: "Show the IDs of the activities.",
+			Required:    false,
+		},
+		{
+			Name:        "quick-nav",
+			Type:        discordgo.ApplicationCommandOptionBoolean,
+			Description: "Enable quick navigation buttons.",
+			Required:    false,
+		},
+		{
+			Name:        "user",
+			Type:        discordgo.ApplicationCommandOptionUser,
+			Description: "The user to view the history of (defaults to yourself).",
 			Required:    false,
 		},
 		{
@@ -58,9 +64,11 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 	s := ctx.Session()
 	user := discordutil.GetUserOption(ctx.Options(), "user", s)
 	showIDsOption := discordutil.GetBoolOption(ctx.Options(), "show-ids")
+	quickNavOption := discordutil.GetBoolOption(ctx.Options(), "quick-nav")
 	pageNumber := discordutil.GetUintOptionOrDefault(ctx.Options(), "page", 1)
 	offset := int(pageNumber-1) * pageSize
 	showIDs := showIDsOption != nil && *showIDsOption
+	quickNav := quickNavOption != nil && *quickNavOption
 
 	if user == nil {
 		user = discordutil.GetInteractionUser(i)
@@ -110,16 +118,72 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		Disabled: true,
 	}
 
-	msg, err := ctx.Followup(&discordgo.WebhookParams{
-		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
-		Components: []discordgo.MessageComponent{
-			discordgo.ActionsRow{
-				Components: []discordgo.MessageComponent{
-					previousButton,
-					nextButton,
-				},
+	// number of pages to fast forward
+	const fastForwardAmount = 5
+
+	fastForwardButton := discordgo.Button{
+		Style:    discordgo.PrimaryButton,
+		Emoji:    discordgo.ComponentEmoji{Name: "⏩"},
+		CustomID: "history_fast_forward",
+		Disabled: page.Page+fastForwardAmount > page.PageCount,
+	}
+
+	rewindButton := discordgo.Button{
+		Style:    discordgo.SecondaryButton,
+		Emoji:    discordgo.ComponentEmoji{Name: "⏪"},
+		CustomID: "history_rewind",
+		Disabled: page.Page-fastForwardAmount < 1,
+	}
+
+	startButton := discordgo.Button{
+		Style:    discordgo.SecondaryButton,
+		Emoji:    discordgo.ComponentEmoji{Name: "⏮️"},
+		CustomID: "history_start",
+		Disabled: page.Page == 1,
+	}
+
+	endButton := discordgo.Button{
+		Style:    discordgo.SecondaryButton,
+		Emoji:    discordgo.ComponentEmoji{Name: "⏭️"},
+		CustomID: "history_end",
+		Disabled: page.Page == page.PageCount,
+	}
+
+	components := []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				previousButton,
+				nextButton,
 			},
 		},
+	}
+
+	if quickNav {
+		nextButton.Label = ""
+		previousButton.Label = ""
+		nextButton.Emoji = discordgo.ComponentEmoji{Name: "▶️"}
+		previousButton.Emoji = discordgo.ComponentEmoji{Name: "◀️"}
+
+		components[0] = discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				rewindButton,
+				previousButton,
+				nextButton,
+				fastForwardButton,
+			},
+		}
+
+		components = append(components, discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				startButton,
+				endButton,
+			},
+		})
+	}
+
+	msg, err := ctx.Followup(&discordgo.WebhookParams{
+		Embeds:     []*discordgo.MessageEmbed{embed.MessageEmbed},
+		Components: components,
 	}, true)
 
 	if err != nil {
@@ -147,6 +211,14 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 			offset -= pageSize
 		} else if ci.MessageComponentData().CustomID == "history_next" {
 			offset += pageSize
+		} else if ci.MessageComponentData().CustomID == "history_fast_forward" {
+			offset += pageSize * fastForwardAmount
+		} else if ci.MessageComponentData().CustomID == "history_rewind" {
+			offset -= pageSize * fastForwardAmount
+		} else if ci.MessageComponentData().CustomID == "history_start" {
+			offset = 0
+		} else if ci.MessageComponentData().CustomID == "history_end" {
+			offset = (page.PageCount - 1) * pageSize
 		}
 
 		page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, pageSize, offset)
@@ -185,19 +257,44 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 
 		previousButton.Disabled = page.Page == 1
 		nextButton.Disabled = page.Page == page.PageCount
+		fastForwardButton.Disabled = page.Page+fastForwardAmount > page.PageCount
+		rewindButton.Disabled = page.Page-fastForwardAmount < 1
+		startButton.Disabled = page.Page == 1
+		endButton.Disabled = page.Page == page.PageCount
+
+		if quickNav {
+			components = []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						rewindButton,
+						previousButton,
+						nextButton,
+						fastForwardButton,
+					},
+				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						startButton,
+						endButton,
+					},
+				},
+			}
+		} else {
+			components = []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						previousButton,
+						nextButton,
+					},
+				},
+			}
+		}
 
 		err := s.InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
 			Data: &discordgo.InteractionResponseData{
-				Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
-				Components: []discordgo.MessageComponent{
-					discordgo.ActionsRow{
-						Components: []discordgo.MessageComponent{
-							previousButton,
-							nextButton,
-						},
-					},
-				},
+				Embeds:     []*discordgo.MessageEmbed{embed.MessageEmbed},
+				Components: components,
 			},
 		})
 
