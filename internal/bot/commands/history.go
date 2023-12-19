@@ -3,11 +3,13 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
+	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -19,6 +21,19 @@ var HistoryCommandData = &discordgo.ApplicationCommand{
 			Name:        "user",
 			Type:        discordgo.ApplicationCommandOptionUser,
 			Description: "The user to view the history of (defaults to yourself).",
+			Required:    false,
+		},
+		{
+			Name:        "show-ids",
+			Type:        discordgo.ApplicationCommandOptionBoolean,
+			Description: "Show the IDs of the activities.",
+			Required:    false,
+		},
+		{
+			Name:        "page",
+			Type:        discordgo.ApplicationCommandOptionInteger,
+			MinValue:    ref.New(1.0),
+			Description: "The page of history to view.",
 			Required:    false,
 		},
 	},
@@ -37,16 +52,21 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		return err
 	}
 
-	offset := 0
+	//offset := 0
+	const pageSize = 6
 	i := ctx.Interaction()
 	s := ctx.Session()
 	user := discordutil.GetUserOption(ctx.Options(), "user", s)
+	showIDsOption := discordutil.GetBoolOption(ctx.Options(), "show-ids")
+	pageNumber := discordutil.GetUintOptionOrDefault(ctx.Options(), "page", 1)
+	offset := int(pageNumber-1) * pageSize
+	showIDs := showIDsOption != nil && *showIDsOption
 
 	if user == nil {
 		user = discordutil.GetInteractionUser(i)
 	}
 
-	page, err := c.r.PageByUserID(ctx.Context(), user.ID, ctx.Interaction().GuildID, 6, offset)
+	page, err := c.r.PageByUserID(ctx.Context(), user.ID, ctx.Interaction().GuildID, pageSize, offset)
 
 	if err != nil {
 		return err
@@ -59,7 +79,21 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		SetFooter(fmt.Sprintf("Page %d of %d", page.Page, page.PageCount), "")
 
 	for _, activity := range page.Activities {
-		embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
+		if !showIDs {
+			embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
+		} else {
+			// IDs should be on their own line
+			// to allow mobile users to copy them
+			embed.AddField(
+				strconv.FormatUint(activity.ID, 10),
+				fmt.Sprintf(
+					"%s (%s)",
+					activity.Name,
+					activity.Date.Format(time.DateTime),
+				),
+				true,
+			)
+		}
 	}
 
 	nextButton := discordgo.Button{
@@ -110,12 +144,12 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		ciContext, cancel := context.WithDeadline(ctx.Context(), discordutil.GetInteractionResponseDeadline(ci.Interaction))
 
 		if ci.MessageComponentData().CustomID == "history_previous" {
-			offset -= 6
+			offset -= pageSize
 		} else if ci.MessageComponentData().CustomID == "history_next" {
-			offset += 6
+			offset += pageSize
 		}
 
-		page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, 6, offset)
+		page, err = c.r.PageByUserID(ciContext, user.ID, ctx.Interaction().GuildID, pageSize, offset)
 
 		if err != nil {
 			cancel()
@@ -132,7 +166,21 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 		embed.ClearFields()
 
 		for _, activity := range page.Activities {
-			embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
+			if !showIDs {
+				embed.AddField(activity.Date.Format(time.DateTime), activity.Name, true)
+			} else {
+				// IDs should be on their own line
+				// to allow mobile users to copy them
+				embed.AddField(
+					strconv.FormatUint(activity.ID, 10),
+					fmt.Sprintf(
+						"%s (%s)",
+						activity.Name,
+						activity.Date.Format(time.DateTime),
+					),
+					true,
+				)
+			}
 		}
 
 		previousButton.Disabled = page.Page == 1
