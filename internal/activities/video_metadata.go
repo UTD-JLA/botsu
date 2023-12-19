@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"log/slog"
 	nurl "net/url"
 	"regexp"
 	"strings"
@@ -42,14 +43,32 @@ type VideoInfo struct {
 	HashTags       []string      `json:"hashtags,omitempty"`
 }
 
-func GetVideoInfo(ctx context.Context, url *nurl.URL, forceYtdlp bool) (*VideoInfo, error) {
+func GetVideoInfo(ctx context.Context, url *nurl.URL, forceYtdlp bool) (v *VideoInfo, err error) {
 	isYoutubeLink := url.Host == "youtu.be" ||
 		url.Host == "youtube.com" ||
 		url.Host == "www.youtube.com" ||
 		url.Host == "m.youtube.com"
 
 	if !forceYtdlp && isYoutubeLink {
-		return getInfoFromYoutube(ctx, url)
+		v, err = getInfoFromYoutube(ctx, url)
+
+		if err != nil {
+			logger, ok := ctx.Value("logger").(*slog.Logger)
+
+			if !ok {
+				logger = slog.Default()
+			}
+
+			logger.Warn(
+				"Failed to get video info from youtube, falling back to yt-dlp",
+				slog.String("url", url.String()),
+				slog.String("error", err.Error()),
+			)
+
+			v, err = getGenericVideoInfo(ctx, url)
+		}
+
+		return
 	}
 
 	return getGenericVideoInfo(ctx, url)
