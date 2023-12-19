@@ -10,6 +10,20 @@ which itself is an inspiration of TheMoeWay's [ImmersionBot](https://github.com/
 - Go 1.21 (for running from source)
 - Docker (for running from Docker image)
 
+## Install
+To install the latest release from the terminal, use:
+```sh
+curl -L https://github.com/UTD-JLA/botsu/releases/latest/download/botsu-linux-amd64 -o ~/.local/bin/botsu
+chmod a+rx ~/.local/bin/botsu
+```
+replacing `~/.local/bin` with your preferred install location. 
+
+To install from source, use:
+```
+go install github.com/UTD-JLA/botsu/cmd/botsu@latest
+```
+which will install to your `GOBIN` (`~/go/bin` by default).
+
 ## Basic Setup
 
 1. Create a Discord bot account and invite it to your server.
