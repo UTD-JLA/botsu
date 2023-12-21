@@ -11,10 +11,8 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
-	"github.com/UTD-JLA/botsu/internal/data"
-	"github.com/UTD-JLA/botsu/internal/data/anime"
-	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
+	"github.com/UTD-JLA/botsu/internal/mediadata"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
@@ -294,8 +292,7 @@ type LogCommand struct {
 	activityRepo  *activities.ActivityRepository
 	userRepo      *users.UserRepository
 	guildRepo     *guilds.GuildRepository
-	animeSearcher *data.DocumentStore[anime.Anime, *anime.Anime]
-	vnSearcher    *data.DocumentStore[vn.VisualNovel, *vn.VisualNovel]
+	mediaSearcher *mediadata.MediaSearcher
 	ytClient      youtube.Client
 }
 
@@ -303,14 +300,12 @@ func NewLogCommand(
 	ar *activities.ActivityRepository,
 	ur *users.UserRepository,
 	gr *guilds.GuildRepository,
-	as *data.DocumentStore[anime.Anime, *anime.Anime],
-	vs *data.DocumentStore[vn.VisualNovel, *vn.VisualNovel],
+	ms *mediadata.MediaSearcher,
 ) *LogCommand {
 	return &LogCommand{
 		activityRepo:  ar,
 		userRepo:      ur,
-		animeSearcher: as,
-		vnSearcher:    vs,
+		mediaSearcher: ms,
 		guildRepo:     gr,
 		ytClient:      youtube.Client{},
 	}
@@ -919,7 +914,7 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 	choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
 
 	if mediaType == activities.ActivityMediaTypeAnime {
-		results, err := c.animeSearcher.Search(ctx, input, 25)
+		results, err := c.mediaSearcher.SearchAnime(ctx, input, 25)
 
 		if err != nil {
 			return nil, err
@@ -930,13 +925,13 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 			var fieldID string
 
 			switch result.Field {
-			case anime.SearchFieldEnglishOfficialTitle:
+			case mediadata.AnimeSearchFieldEnglishOfficialTitle:
 				title = result.Value.EnglishOfficialTitle
 				fieldID = "en"
-			case anime.SearchFieldJapaneseOfficialTitle:
+			case mediadata.AnimeSearchFieldJapaneseOfficialTitle:
 				title = result.Value.JapaneseOfficialTitle
 				fieldID = "jp"
-			case anime.SearchFieldRomajiOfficialTitle:
+			case mediadata.AnimeSearchFieldRomajiOfficialTitle:
 				title = result.Value.RomajiOfficialTitle
 				fieldID = "x-jat"
 			default:
@@ -950,7 +945,7 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 			})
 		}
 	} else if mediaType == activities.ActivityMediaTypeVisualNovel {
-		results, err := c.vnSearcher.Search(ctx, input, 25)
+		results, err := c.mediaSearcher.SearchVisualNovel(ctx, input, 25)
 
 		if err != nil {
 			return nil, err
@@ -961,13 +956,13 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 			var fieldID string
 
 			switch result.Field {
-			case vn.SearchFieldJapaneseTitle:
+			case mediadata.VNSearchFieldJapaneseTitle:
 				title = result.Value.JapaneseTitle
 				fieldID = "jp"
-			case vn.SearchFieldEnglishTitle:
+			case mediadata.VNSearchFieldEnglishTitle:
 				title = result.Value.EnglishTitle
 				fieldID = "en"
-			case vn.SearchFieldRomajiTitle:
+			case mediadata.VNSearchFieldRomajiTitle:
 				title = result.Value.RomajiTitle
 				fieldID = "romaji"
 			}
@@ -982,7 +977,7 @@ func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, in
 	return
 }
 
-func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, string, error) {
+func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*mediadata.Anime, string, error) {
 	if !isAutocompletedEntry(input) {
 		return nil, "", errInvalidMediaAutocompleteInput
 	}
@@ -996,7 +991,7 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 
 	id, field := parts[0], parts[1]
 
-	anime, err := c.animeSearcher.Get(context.TODO(), id)
+	anime, err := c.mediaSearcher.ReadAnime(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err
@@ -1005,7 +1000,7 @@ func (c *LogCommand) resolveAnimeFromAutocomplete(input string) (*anime.Anime, s
 	return anime, field, nil
 }
 
-func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, string, error) {
+func (c *LogCommand) resolveVNFromAutocomplete(input string) (*mediadata.VisualNovel, string, error) {
 	if !isAutocompletedEntry(input) {
 		return nil, "", errInvalidMediaAutocompleteInput
 	}
@@ -1020,7 +1015,7 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*vn.VisualNovel, s
 
 	id, field := parts[0], parts[1]
 
-	vn, err := c.vnSearcher.Get(context.TODO(), id)
+	vn, err := c.mediaSearcher.ReadVisualNovel(context.TODO(), id)
 
 	if err != nil {
 		return nil, "", err

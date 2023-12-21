@@ -6,19 +6,18 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
 
 type Config struct {
-	Database         DatabaseConfig `toml:"database"`
-	AoDBPath         string         `toml:"aodb_path"`
-	AniDBDumpPath    string         `toml:"anidb_dump_path"`
-	VNDBDumpPath     string         `toml:"vndb_dump_path"`
-	Token            string         `toml:"token"`
-	UseMembersIntent bool           `toml:"use_members_intent"`
-	LogLevel         slog.Level     `toml:"log_level"`
-	NoPanic          bool           `toml:"no_panic"`
+	Database           DatabaseConfig `toml:"database"`
+	Token              string         `toml:"token"`
+	UseMembersIntent   bool           `toml:"use_members_intent"`
+	LogLevel           slog.Level     `toml:"log_level"`
+	NoPanic            bool           `toml:"no_panic"`
+	DataUpdateInterval time.Duration  `toml:"data_update_interval"`
 }
 
 type DatabaseConfig struct {
@@ -56,16 +55,8 @@ func NewConfig() *Config {
 }
 
 func (c *Config) LoadDefaults() {
-	if c.VNDBDumpPath == "" {
-		c.VNDBDumpPath = "data/vndb-db"
-	}
-
-	if c.AniDBDumpPath == "" {
-		c.AniDBDumpPath = "data/anime-titles.dat"
-	}
-
-	if c.AoDBPath == "" {
-		c.AoDBPath = "data/anime-offline-database-minified.json"
+	if c.DataUpdateInterval.Abs() == 0 {
+		c.DataUpdateInterval = 7 * 24 * time.Hour
 	}
 }
 
@@ -74,24 +65,6 @@ func (c *Config) LoadEnv() error {
 
 	if ok {
 		c.Token = token
-	}
-
-	aodbPath, ok := os.LookupEnv("BOTSU_AODB_PATH")
-
-	if ok {
-		c.AoDBPath = aodbPath
-	}
-
-	anidbPath, ok := os.LookupEnv("BOTSU_ANIDB_PATH")
-
-	if ok {
-		c.AniDBDumpPath = anidbPath
-	}
-
-	vndbPath, ok := os.LookupEnv("BOTSU_VNDB_PATH")
-
-	if ok {
-		c.VNDBDumpPath = vndbPath
 	}
 
 	connectionString, ok := os.LookupEnv("BOTSU_CONNECTION_STRING")
@@ -124,6 +97,18 @@ func (c *Config) LoadEnv() error {
 
 	if ok {
 		c.NoPanic = stringToTruthy(noPanic)
+	}
+
+	dataUpdateInterval, ok := os.LookupEnv("BOTSU_DATA_UPDATE_INTERVAL")
+
+	if ok {
+		duration, err := time.ParseDuration(dataUpdateInterval)
+
+		if err != nil {
+			return err
+		}
+
+		c.DataUpdateInterval = duration
 	}
 
 	return nil

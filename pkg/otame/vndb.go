@@ -10,7 +10,6 @@ import (
 )
 
 type VNDBTitle struct {
-	ID       string
 	VNID     string
 	Language string
 	Official bool

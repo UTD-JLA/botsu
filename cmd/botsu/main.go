@@ -10,18 +10,14 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"path"
-	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
-	"github.com/UTD-JLA/botsu/internal/data"
-	"github.com/UTD-JLA/botsu/internal/data/anime"
-	"github.com/UTD-JLA/botsu/internal/data/vn"
 	"github.com/UTD-JLA/botsu/internal/guilds"
+	"github.com/UTD-JLA/botsu/internal/mediadata"
 	"github.com/UTD-JLA/botsu/internal/users"
 	"github.com/UTD-JLA/botsu/migrations"
 	"github.com/bwmarrin/discordgo"
@@ -36,50 +32,8 @@ var (
 	configPath      = flag.String("config", "config.toml", "Path to config file")
 	enableProfiling = flag.Bool("profiling", false, "Enable profiling")
 	skipMigration   = flag.Bool("skip-migration", false, "Skip automatic migration")
+	skipDataUpdate  = flag.Bool("skip-data-update", false, "Skip automatic data update")
 )
-
-const (
-	staleAODBThreshold  = 7 * 24 * time.Hour
-	staleAniDBThreshold = 7 * 24 * time.Hour
-	staleVNDBThreshold  = 7 * 24 * time.Hour
-)
-
-type dataSource struct {
-	path           string
-	staleThreshold time.Duration
-	downloadFunc   func(string) error
-}
-
-func ensureDataSourceExists(logger *slog.Logger, source dataSource) (err error) {
-	logger.Info("Checking data source")
-
-	stat, err := os.Stat(source.path)
-
-	if os.IsNotExist(err) {
-		logger.Info("Downloading source")
-
-		dir := path.Dir(source.path)
-
-		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-			logger.Error("Unable to create directory", slog.String("err", err.Error()))
-			return
-		}
-
-		err = source.downloadFunc(source.path)
-
-		if err != nil {
-			logger.Error("Unable to download data", slog.String("err", err.Error()))
-			return
-		}
-	} else if err != nil {
-		logger.Error("Unable to stat file", slog.String("err", err.Error()))
-		return
-	} else if time.Since(stat.ModTime()) > source.staleThreshold {
-		logger.Warn("Data is stale, consider updating it", slog.Duration("age", time.Since(stat.ModTime())))
-	}
-
-	return
-}
 
 func main() {
 	flag.Parse()
@@ -130,130 +84,34 @@ func main() {
 		}
 	}
 
-	var sources = map[string]dataSource{
-		"aodb": {
-			path:           config.AoDBPath,
-			downloadFunc:   anime.DownloadAnimeOfflineDatabase,
-			staleThreshold: staleAODBThreshold,
-		},
-		"anidb": {
-			path:           config.AniDBDumpPath,
-			downloadFunc:   anime.DownloadAniDBDump,
-			staleThreshold: staleAniDBThreshold,
-		},
-		"vndb": {
-			path:           config.VNDBDumpPath,
-			downloadFunc:   vn.DownloadVNDBDump,
-			staleThreshold: staleVNDBThreshold,
-		},
-	}
+	mediaSearcher := mediadata.NewMediaSearcher("data")
+	mediaSearcher.Logger = logger.WithGroup("searcher")
 
-	errs := make(chan error, len(sources))
-
-	for name, source := range sources {
-		sourceLogger := logger.WithGroup(name).With(slog.String("path", source.path))
-
-		go func(src dataSource) {
-			errs <- ensureDataSourceExists(sourceLogger, src)
-		}(source)
-	}
-
-	errsSlice := make([]error, 0, len(sources))
-
-	for range sources {
-		if err := <-errs; err != nil {
-			errsSlice = append(errsSlice, err)
+	if !*skipDataUpdate {
+		if err = mediaSearcher.UpdateData(context.Background()); err != nil {
+			logger.Error("Unable to update searcher data", slog.String("err", err.Error()))
+			os.Exit(1)
 		}
 	}
 
-	if err = errors.Join(errsSlice...); err != nil {
-		logger.Error("Encountered error(s) while ensuring data sources exist, exiting")
+	if err = mediaSearcher.Open(); err != nil {
+		logger.Error("Unable to open searcher", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
-	animeStore := data.NewDocumentStore[anime.Anime](
-		context.Background(),
-		data.WithPath("data/.index/anime.bluge"),
-		data.WithSearchFields(anime.SearchFields...),
-	)
+	defer mediaSearcher.Close()
 
-	// check if index exists
-	if _, err = os.Stat("data/.index/anime.bluge"); os.IsNotExist(err) {
-		dataChan := make(chan []*anime.AniDBEntry, 1)
-		aodbChan := make(chan *anime.AnimeOfflineDatabase, 1)
+	logger.Debug("Starting data update ticker", slog.Duration("interval", config.DataUpdateInterval))
+	updateTicker := time.NewTicker(config.DataUpdateInterval)
+	defer updateTicker.Stop()
 
-		logger.Info("Creating anime index")
-
-		go func() {
-			data, err := anime.ReadAniDBDump(config.AniDBDumpPath)
-
-			if err != nil {
-				panic(err)
-			}
-
-			dataChan <- data
-		}()
-
-		go func() {
-			aodb, err := anime.ReadAODBFile(config.AoDBPath)
-
-			if err != nil {
-				panic(err)
-			}
-
-			aodbChan <- aodb
-		}()
-
-		mappings := anime.CreateAIDMappingFromAODB(<-aodbChan)
-		joined := anime.JoinAniDBAndAODB(mappings, <-dataChan)
-
-		for _, entry := range joined {
-			if err = animeStore.Store(entry); err != nil {
-				logger.Error("Unable to store anime", slog.String("err", err.Error()))
-				os.Exit(1)
+	go func() {
+		for range updateTicker.C {
+			if err = mediaSearcher.UpdateData(context.Background()); err != nil {
+				logger.Error("Unable to update searcher data", slog.String("err", err.Error()))
 			}
 		}
-	}
-
-	animeStore.Flush()
-
-	vnStore := data.NewDocumentStore[vn.VisualNovel](
-		context.Background(),
-		data.WithPath("data/.index/vn.bluge"),
-		data.WithSearchFields(vn.SearchFields...),
-	)
-
-	if _, err = os.Stat("data/.index/vn.bluge"); os.IsNotExist(err) {
-		logger.Info("Creating vndb index")
-
-		titles, err := vn.ReadVNDBTitlesFile(config.VNDBDumpPath + "/db/vn_titles")
-
-		if err != nil {
-			logger.Error("Unable to read vndb titles file", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
-
-		data, err := vn.ReadVNDBDataFile(config.VNDBDumpPath + "/db/vn")
-
-		if err != nil {
-			logger.Error("Unable to read vndb data file", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
-
-		vns := vn.JoinTitlesAndData(titles, data)
-
-		for _, entry := range vns {
-			if err = vnStore.Store(entry); err != nil {
-				logger.Error("Unable to store vn", slog.String("err", err.Error()))
-				os.Exit(1)
-			}
-		}
-	}
-
-	vnStore.Flush()
-
-	// Force GC before continuing with the rest of the setup
-	runtime.GC()
+	}()
 
 	logger.Info("Connecting to database")
 
@@ -329,7 +187,7 @@ func main() {
 	bot := bot.NewBot(logger.WithGroup("bot"), guildRepo)
 	bot.SetNoPanic(config.NoPanic)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, animeStore, vnStore))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, mediaSearcher))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))

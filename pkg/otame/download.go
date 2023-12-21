@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"slices"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -110,12 +109,6 @@ func DownloadAniDB(ctx context.Context) (r io.ReadCloser, err error) {
 	return
 }
 
-var VNDBTargetFiles = []string{
-	"db/vn_titles",
-	"db/vn",
-	"db/images",
-}
-
 // Returns an fs.FS that also implements io.Closer.
 // The caller is responsible for closing the fsCloser.
 // Same as: DownloadVNDBUsingTempDir(ctx, "")
@@ -156,9 +149,7 @@ func DownloadVNDBUsingTempDir(ctx context.Context, temp string) (fsc *fsCloser, 
 	}
 
 	tarReader := tar.NewReader(r)
-	remainingFiles := slices.Clone(VNDBTargetFiles)
-
-	for len(remainingFiles) > 0 {
+	for {
 		if err = ctx.Err(); err != nil {
 			break
 		}
@@ -173,17 +164,6 @@ func DownloadVNDBUsingTempDir(ctx context.Context, temp string) (fsc *fsCloser, 
 			}
 
 			break
-		}
-
-		if !slices.Contains(remainingFiles, header.Name) {
-			continue
-		}
-
-		for i, file := range remainingFiles {
-			if file == header.Name {
-				remainingFiles = append(remainingFiles[:i], remainingFiles[i+1:]...)
-				break
-			}
 		}
 
 		switch header.Typeflag {
