@@ -1,9 +1,14 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,6 +22,7 @@ import (
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
 	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
+	"github.com/esimov/stackblur-go"
 	"github.com/golang-module/carbon/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/kkdai/youtube/v2"
@@ -618,6 +624,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 	readingSpeedHourly := discordutil.GetUintOption(args, "reading-speed-hourly")
 
 	thumbnail := ""
+	attachments := make([]*discordgo.File, 0)
 
 	if isAutocompletedEntry(activity.Name) {
 		v, titleField, err := c.resolveVNFromAutocomplete(activity.Name)
@@ -633,10 +640,26 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 			activity.Name = v.RomajiTitle
 		}
 
-		thumbnail = v.ImageURL()
 		activity.SetMeta("vndb_id", v.ID)
 		activity.SetMeta("thumbnail", v.ImageURL())
 
+		thumbnail = v.ImageURL()
+
+		if v.ImageNSFW && thumbnail != "" {
+			blurredThumbnail, err := blurImageFromURL(ctx.Context(), thumbnail, 30)
+
+			if err != nil {
+				return err
+			}
+
+			attachments = append(attachments, &discordgo.File{
+				Name:        "thumbnail.jpg",
+				ContentType: "image/jpeg",
+				Reader:      blurredThumbnail,
+			})
+
+			thumbnail = "attachment://thumbnail.jpg"
+		}
 	}
 
 	if charCount != 0 {
@@ -703,6 +726,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 
 	_, err = ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
+		Files:  attachments,
 	}, false)
 
 	return err
@@ -1185,4 +1209,37 @@ func truncateLongString(s string, maxLen int) string {
 
 func isAutocompletedEntry(input string) bool {
 	return len(input) > 0 && strings.HasPrefix(input, "${") && strings.HasSuffix(input, "}")
+}
+
+func blurImageFromURL(ctx context.Context, url string, radius uint32) (imgFile io.Reader, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+
+	if err != nil {
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	srcImage, _, err := image.Decode(resp.Body)
+
+	if err != nil {
+		return
+	}
+
+	img, err := stackblur.Process(srcImage, radius)
+
+	if err != nil {
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	err = jpeg.Encode(buf, img, nil)
+	imgFile = buf
+	return
 }
