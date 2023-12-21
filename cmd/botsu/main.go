@@ -99,7 +99,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	defer mediaSearcher.Close()
+	defer func() {
+		if err = mediaSearcher.Close(); err != nil {
+			logger.Error("Unable to close searcher", slog.String("err", err.Error()))
+		}
+	}()
 
 	logger.Debug("Starting data update ticker", slog.Duration("interval", config.DataUpdateInterval))
 	updateTicker := time.NewTicker(config.DataUpdateInterval)
