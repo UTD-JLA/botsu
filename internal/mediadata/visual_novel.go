@@ -3,6 +3,7 @@ package mediadata
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/UTD-JLA/botsu/pkg/otame"
 	"github.com/blugelabs/bluge"
@@ -82,7 +83,15 @@ func DownloadVisualNovels(ctx context.Context) (vns []VisualNovel, err error) {
 		return
 	}
 
-	defer vndbDataFS.Close()
+	defer func() {
+		if err = vndbDataFS.Close(); err != nil {
+			slog.Error("Unable to close VNDB data", slog.String("err", err.Error()))
+
+			if err == nil {
+				err = fmt.Errorf("unable to close VNDB data: %w", err)
+			}
+		}
+	}()
 
 	vnData, err := vndbDataFS.Open("db/vn")
 
