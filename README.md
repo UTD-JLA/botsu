@@ -1,4 +1,4 @@
-# Botsu ![Build Status](https://github.com/UTD-JLA/botsu/actions/workflows/go.yml/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/UTD-JLA/botsu)](https://goreportcard.com/report/github.com/UTD-JLA/botsu)
+# Botsu [![Go](https://github.com/UTD-JLA/botsu/actions/workflows/go.yml/badge.svg)](https://github.com/UTD-JLA/botsu/actions/workflows/go.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/UTD-JLA/botsu)](https://goreportcard.com/report/github.com/UTD-JLA/botsu)
 
 Botsu is a Discord bot for logging time spent on immersion activities in Japanese.
 It is the successor to [AnotherImmersionBot](https://github.com/UTD-JLA/another-immersion-bot),
