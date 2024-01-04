@@ -49,16 +49,24 @@ func GetVideoInfo(ctx context.Context, url *nurl.URL, forceYtdlp bool) (v *Video
 		url.Host == "www.youtube.com" ||
 		url.Host == "m.youtube.com"
 
+	logger, ok := ctx.Value("logger").(*slog.Logger)
+
+	if !ok {
+		logger = slog.Default()
+	}
+
+	logger.Debug(
+		"Getting video info",
+		slog.String("url", url.String()),
+		slog.Bool("is_youtube_link", isYoutubeLink),
+		slog.Bool("force_ytdlp", forceYtdlp),
+		slog.String("host", url.Host),
+	)
+
 	if !forceYtdlp && isYoutubeLink {
 		v, err = getInfoFromYoutube(ctx, url)
 
 		if err != nil {
-			logger, ok := ctx.Value("logger").(*slog.Logger)
-
-			if !ok {
-				logger = slog.Default()
-			}
-
 			logger.Warn(
 				"Failed to get video info from youtube, falling back to yt-dlp",
 				slog.String("url", url.String()),
