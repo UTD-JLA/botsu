@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/blugelabs/bluge v0.2.2
-	github.com/bwmarrin/discordgo v0.27.1
+	github.com/bwmarrin/discordgo v0.27.2-0.20240104041734-f70a01544f56
 	github.com/esimov/stackblur-go v1.1.0
 	github.com/glebarez/go-sqlite v1.21.2
 	github.com/golang-migrate/migrate/v4 v4.16.2

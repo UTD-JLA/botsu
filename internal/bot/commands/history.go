@@ -123,28 +123,28 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 
 	fastForwardButton := discordgo.Button{
 		Style:    discordgo.PrimaryButton,
-		Emoji:    discordgo.ComponentEmoji{Name: "⏩"},
+		Emoji:    &discordgo.ComponentEmoji{Name: "⏩"},
 		CustomID: "history_fast_forward",
 		Disabled: page.Page+fastForwardAmount > page.PageCount,
 	}
 
 	rewindButton := discordgo.Button{
 		Style:    discordgo.SecondaryButton,
-		Emoji:    discordgo.ComponentEmoji{Name: "⏪"},
+		Emoji:    &discordgo.ComponentEmoji{Name: "⏪"},
 		CustomID: "history_rewind",
 		Disabled: page.Page-fastForwardAmount < 1,
 	}
 
 	startButton := discordgo.Button{
 		Style:    discordgo.SecondaryButton,
-		Emoji:    discordgo.ComponentEmoji{Name: "⏮️"},
+		Emoji:    &discordgo.ComponentEmoji{Name: "⏮️"},
 		CustomID: "history_start",
 		Disabled: page.Page == 1,
 	}
 
 	endButton := discordgo.Button{
 		Style:    discordgo.SecondaryButton,
-		Emoji:    discordgo.ComponentEmoji{Name: "⏭️"},
+		Emoji:    &discordgo.ComponentEmoji{Name: "⏭️"},
 		CustomID: "history_end",
 		Disabled: page.Page == page.PageCount,
 	}
@@ -161,8 +161,8 @@ func (c *HistoryCommand) Handle(ctx *bot.InteractionContext) error {
 	if quickNav {
 		nextButton.Label = ""
 		previousButton.Label = ""
-		nextButton.Emoji = discordgo.ComponentEmoji{Name: "▶️"}
-		previousButton.Emoji = discordgo.ComponentEmoji{Name: "◀️"}
+		nextButton.Emoji = &discordgo.ComponentEmoji{Name: "▶️"}
+		previousButton.Emoji = &discordgo.ComponentEmoji{Name: "◀️"}
 
 		components[0] = discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{

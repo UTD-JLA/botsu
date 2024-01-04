@@ -4,3 +4,4 @@ config.toml
 data
 !internal/data
 bin
+pgadmin4
