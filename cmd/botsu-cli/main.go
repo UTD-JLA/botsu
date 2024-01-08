@@ -93,6 +93,12 @@ func getActivityFromFlags() (a *activities.Activity, err error) {
 		}
 
 		videoData, err := activities.GetVideoInfo(context.Background(), u, false)
+
+		if err != nil {
+			err = fmt.Errorf("failed to get video info: %w", err)
+			return nil, err
+		}
+
 		a.PrimaryType = activities.ActivityImmersionTypeListening
 		a.MediaType = ref.New(activities.ActivityMediaTypeVideo)
 		a.Name = videoData.Title
