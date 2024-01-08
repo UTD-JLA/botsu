@@ -155,6 +155,7 @@ func (c *ImportCommand) handleUndo(
 	}
 
 	embedBuilder.SetDescription(fmt.Sprintf("Successfully removed import! %d entries were removed.", removed))
+	embedBuilder.SetTitle("Success!")
 	embedBuilder.SetColor(discordutil.ColorSuccess)
 
 	_, err = cmd.Followup(&discordgo.WebhookParams{
