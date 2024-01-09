@@ -7,8 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/UTD-JLA/botsu/internal/activities"
@@ -39,6 +42,7 @@ var (
 	videoURLFlag                  = flag.String("video-url", "", "URL of the video")
 	videoURLShortFlag             = flag.String("vu", "", "URL of the video (shorthand)")
 	destinationFlag               = flag.String("o", "", "destination of the log file")
+	serverFlag                    = flag.Bool("server", false, "run as a server")
 )
 
 func getOneOfNumberFlags[T float64](flags ...*T) T {
@@ -257,9 +261,56 @@ func Usage() {
 	fmt.Fprintln(out)
 }
 
+func runServer() error {
+	mu := sync.Mutex{}
+
+	http.HandleFunc("/log", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		var a *activities.Activity
+
+		if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+			fmt.Fprintf(os.Stderr, "\u001b[31mError: %s\u001b[0m\n", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// workaround for UserID check
+		a.UserID = strings.Repeat("0", 18)
+
+		if err := activities.ValidateExternalActivity(a); err != nil {
+			fmt.Fprintf(os.Stderr, "\u001b[31mError: %s\u001b[0m\n", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		a.UserID = ""
+
+		if err := logActivity(a); err != nil {
+			fmt.Fprintf(os.Stderr, "\u001b[31mError: %s\u001b[0m\n", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	return http.ListenAndServe(":5300", nil)
+}
+
 func main() {
 	flag.Usage = Usage
 	flag.Parse()
+
+	if *serverFlag {
+		err := runServer()
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\u001b[31mError: %s\u001b[0m\n\n", err)
+			os.Exit(1)
+		}
+	}
 
 	a, err := getActivityFromFlags()
 
