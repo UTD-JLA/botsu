@@ -172,6 +172,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 	}
 
 	embedBuilder.SetColor(discordutil.ColorSuccess)
+	embedBuilder.SetTitle("Success!")
 
 	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embedBuilder.MessageEmbed},
