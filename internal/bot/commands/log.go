@@ -16,6 +16,7 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
+	"github.com/UTD-JLA/botsu/internal/goals"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/mediadata"
 	"github.com/UTD-JLA/botsu/internal/users"
@@ -299,6 +300,7 @@ type LogCommand struct {
 	userRepo      *users.UserRepository
 	guildRepo     *guilds.GuildRepository
 	mediaSearcher *mediadata.MediaSearcher
+	goalService   *goals.GoalService
 	ytClient      youtube.Client
 }
 
@@ -307,12 +309,14 @@ func NewLogCommand(
 	ur *users.UserRepository,
 	gr *guilds.GuildRepository,
 	ms *mediadata.MediaSearcher,
+	goalService *goals.GoalService,
 ) *LogCommand {
 	return &LogCommand{
 		activityRepo:  ar,
 		userRepo:      ur,
 		mediaSearcher: ms,
 		guildRepo:     gr,
+		goalService:   goalService,
 		ytClient:      youtube.Client{},
 	}
 }
@@ -344,6 +348,40 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 	default:
 		return errors.New("invalid subcommand")
 	}
+}
+
+func (c *LogCommand) checkGoals(cmd *bot.InteractionContext, a *activities.Activity) error {
+	completedGoals, err := c.goalService.CheckCompleted(cmd.Context(), a)
+
+	if err != nil {
+		return err
+	}
+
+	if len(completedGoals) == 0 {
+		return nil
+	}
+
+	embed := discordutil.NewEmbedBuilder().
+		SetTitle("Goals completed!").
+		SetColor(discordutil.ColorSuccess).
+		SetTimestamp(time.Now()).
+		SetFooter(fmt.Sprintf("Activity ID: %d", a.ID), "").
+		SetDescription("You have completed the following goals:")
+
+	for i, g := range completedGoals {
+		if i == 10 {
+			embed.AddField("...", "And more!", false)
+			break
+		}
+
+		embed.AddField(g.Name, fmt.Sprintf("Target: %s\nCompleted: %s", g.Target.String(), g.Current.String()), false)
+	}
+
+	_, err = cmd.Followup(&discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
+	}, false)
+
+	return err
 }
 
 func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
@@ -499,7 +537,11 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 
 	_, err = ctx.Followup(&params, false)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	return c.checkGoals(ctx, activity)
 }
 
 func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
@@ -590,7 +632,11 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	return c.checkGoals(ctx, activity)
 }
 
 func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
@@ -729,7 +775,11 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		Files:  attachments,
 	}, false)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	return c.checkGoals(ctx, activity)
 }
 
 func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
@@ -876,7 +926,11 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		Components: []discordgo.MessageComponent{row},
 	}, false)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	return c.checkGoals(ctx, activity)
 }
 
 func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
@@ -929,9 +983,15 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 		SetColor(discordutil.ColorSuccess).
 		MessageEmbed
 
-	return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+	err = ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embed},
 	})
+
+	if err != nil {
+		return err
+	}
+
+	return c.checkGoals(ctx, activity)
 }
 
 func (c *LogCommand) createAutocompleteResult(ctx context.Context, mediaType, input string) (choices []*discordgo.ApplicationCommandOptionChoice, err error) {
