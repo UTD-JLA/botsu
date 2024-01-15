@@ -2,7 +2,6 @@ package goals
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"time"
 
@@ -100,12 +99,40 @@ func (r *GoalRepository) Create(ctx context.Context, g *Goal) (err error) {
 	return
 }
 
+func (r *GoalRepository) FindByID(ctx context.Context, id int64) (goal *Goal, err error) {
+	row := r.pool.QueryRow(ctx, `
+		SELECT id, user_id, name, activity_type, media_type, youtube_channels, target, current, cron, due_at, created_at
+		FROM goals		
+		WHERE deleted_at IS NULL
+		AND id = $1
+	`, id)
+
+	goal = &Goal{}
+
+	err = row.Scan(
+		&goal.ID,
+		&goal.UserID,
+		&goal.Name,
+		&goal.ActivityType,
+		&goal.MediaType,
+		&goal.YoutubeChannels,
+		&goal.Target,
+		&goal.Current,
+		&goal.Cron,
+		&goal.DueAt,
+		&goal.CreatedAt,
+	)
+
+	return
+}
+
 func (r *GoalRepository) FindByUserID(ctx context.Context, userID string) (goals []*Goal, err error) {
 	rows, err := r.pool.Query(
 		ctx,
 		`SELECT id, user_id, name, activity_type, media_type, youtube_channels, target, current, cron, due_at, created_at
 		FROM goals
-		WHERE user_id = $1`,
+		WHERE deleted_at IS NULL
+		AND user_id = $1`,
 		userID,
 	)
 
@@ -153,6 +180,7 @@ func (r *GoalRepository) BeginUpdateByUserID(ctx context.Context, userID string)
 		`SELECT id, user_id, name, activity_type, media_type, youtube_channels, target, current, cron, due_at, created_at
 		FROM goals
 		WHERE user_id = $1
+		AND DELETED_AT IS NULL
 		FOR UPDATE`,
 		userID,
 	)
@@ -214,6 +242,20 @@ func (r *GoalRepository) FinishUpdate(ctx context.Context, tx pgx.Tx) (err error
 	return
 }
 
+func (r *GoalRepository) DeleteByID(ctx context.Context, id int64) (err error) {
+	conn, err := r.pool.Acquire(ctx)
+
+	if err != nil {
+		return
+	}
+
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx, "UPDATE GOALS SET deleted_at = (NOW() AT TIME ZONE 'UTC') WHERE id = $1", id)
+
+	return
+}
+
 type GoalService struct {
 	repo *GoalRepository
 	ts   *users.UserTimeService
@@ -238,6 +280,16 @@ func (s *GoalService) Create(ctx context.Context, g *Goal) (err error) {
 	return
 }
 
+func (s *GoalService) Delete(ctx context.Context, goalID int64) (err error) {
+	err = s.repo.DeleteByID(ctx, goalID)
+	return
+}
+
+func (s *GoalService) FindByID(ctx context.Context, goalID int64) (goal *Goal, err error) {
+	goal, err = s.repo.FindByID(ctx, goalID)
+	return
+}
+
 func (s *GoalService) FindByUserID(ctx context.Context, userID string) (goals []*Goal, err error) {
 	goals, err = s.repo.FindByUserID(ctx, userID)
 	return
@@ -253,8 +305,6 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 	defer tx.Rollback(ctx)
 
 	for _, g := range goals {
-		fmt.Printf("goal: %+v\n", g)
-
 		if g.IsDue() {
 			g.Current = 0
 			g.DueAt, err = s.NextCron(ctx, g)
@@ -272,17 +322,11 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 			continue
 		}
 
-		if g.Current >= g.Target {
+		if g.Current >= g.Target || !g.MatchesActivity(a) {
 			continue
 		}
 
-		if g.MatchesActivity(a) {
-			fmt.Printf("matched activity: %+v\n", a)
-			g.Current += a.Duration
-		} else {
-			fmt.Printf("did not match activity: %+v\n", a)
-		}
-
+		g.Current += a.Duration
 		if g.Current >= g.Target {
 			completed = append(completed, g)
 		}

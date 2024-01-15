@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -35,28 +38,11 @@ var GoalCommandData = &discordgo.ApplicationCommand{
 					Required:    true,
 				},
 				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "cron",
-					Description: "The cron expression for the goal.",
-					Required:    true,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{
-							Name:  "Daily",
-							Value: "@daily",
-						},
-						{
-							Name:  "Weekly",
-							Value: "@weekly",
-						},
-						{
-							Name:  "Monthly",
-							Value: "@monthly",
-						},
-						{
-							Name:  "Yearly",
-							Value: "@yearly",
-						},
-					},
+					Type:         discordgo.ApplicationCommandOptionString,
+					Name:         "cron",
+					Description:  "The cron expression for the goal.",
+					Required:     true,
+					Autocomplete: true,
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -121,7 +107,7 @@ var GoalCommandData = &discordgo.ApplicationCommand{
 			Description: "Delete a goal.",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
-					Type:        discordgo.ApplicationCommandOptionString,
+					Type:        discordgo.ApplicationCommandOptionInteger,
 					Name:        "id",
 					Description: "The ID of the goal.",
 					Required:    true,
@@ -140,6 +126,10 @@ func NewGoalCommand(goals *goals.GoalService) *GoalCommand {
 }
 
 func (c *GoalCommand) Handle(cmd *bot.InteractionContext) error {
+	if cmd.IsAutocomplete() {
+		return c.handleAutocomplete(cmd)
+	}
+
 	if len(cmd.Options()) == 0 {
 		return bot.ErrInvalidOptions
 	}
@@ -151,12 +141,60 @@ func (c *GoalCommand) Handle(cmd *bot.InteractionContext) error {
 		return c.handleCreate(cmd, subcommand)
 	case "list":
 		return c.handleList(cmd, subcommand)
+	case "delete":
+		return c.handleDelete(cmd, subcommand)
 	default:
 		return bot.ErrInvalidOptions
 	}
 }
 
-func (c *GoalCommand) handleList(cmd *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+func (c *GoalCommand) handleDelete(cmd *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
+	id, err := discordutil.GetRequiredIntOption(subcommand.Options, "id")
+	if err != nil {
+		return err
+	}
+
+	cmd.Logger.Debug("Finding goal for deletion", slog.Int64("goal_id", id))
+
+	goal, err := c.goals.FindByID(cmd.ResponseContext(), id)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("error finding goal: %w", err)
+		}
+
+		return cmd.Respond(
+			discordgo.InteractionResponseChannelMessageWithSource,
+			&discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("No goal found with ID: %d", id),
+			},
+		)
+	}
+
+	if goal.UserID != cmd.User().ID {
+		return cmd.Respond(
+			discordgo.InteractionResponseChannelMessageWithSource,
+			&discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("No goal found with ID: %d", id),
+			},
+		)
+	}
+
+	cmd.Logger.Debug("Deleting goal", slog.Int64("goal_id", id))
+
+	err = c.goals.Delete(cmd.ResponseContext(), id)
+	if err != nil {
+		return err
+	}
+
+	return cmd.Respond(
+		discordgo.InteractionResponseChannelMessageWithSource,
+		&discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("Goal **%s** deleted.", goal.Name),
+		},
+	)
+}
+
+func (c *GoalCommand) handleList(cmd *bot.InteractionContext, _ *discordgo.ApplicationCommandInteractionDataOption) error {
 	goals, err := c.goals.FindByUserID(cmd.ResponseContext(), cmd.User().ID)
 
 	if err != nil {
@@ -164,44 +202,18 @@ func (c *GoalCommand) handleList(cmd *bot.InteractionContext, subcommand *discor
 	}
 
 	if len(goals) == 0 {
-		_, err := cmd.Followup(
-			&discordgo.WebhookParams{
-				Content: "You have no goals!",
+		return cmd.Respond(
+			discordgo.InteractionResponseChannelMessageWithSource,
+			&discordgo.InteractionResponseData{
+				Content: "You have not set any goals! Try setting one with: `/goal create`",
 			},
-			false,
 		)
-
-		return err
 	}
 
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Goals").
 		SetColor(discordutil.ColorPrimary).
 		SetTimestamp(time.Now())
-
-	// pageFunc := func(i int) *discordgo.MessageEmbed {
-	// 	embed.ClearFields()
-	// 	embed.SetFooter(fmt.Sprintf("Page %d/%d", i+1, len(goals)))
-	// 	embed.AddField("Goal", fmt.Sprintf("%s (%d)", goals[i].Name, goals[i].ID), false)
-	// 	embed.AddField("Target", goals[i].Target.String(), true)
-	// 	embed.AddField("Current", goals[i].Current.String(), true)
-	// 	embed.AddField("Due At", fmt.Sprintf("<t:%d>", goals[i].DueAt.Unix()), true)
-	// 	embed.AddField("Cron", goals[i].Cron, true)
-
-	// 	if goals[i].ActivityType != nil {
-	// 		embed.AddField("Activity Type", *goals[i].ActivityType, true)
-	// 	}
-
-	// 	if goals[i].MediaType != nil {
-	// 		embed.AddField("Media Type", *goals[i].MediaType, true)
-	// 	}
-
-	// 	if len(goals[i].YoutubeChannels) > 0 {
-	// 		embed.AddField("YouTube Channels", strings.Join(goals[i].YoutubeChannels, ", "), true)
-	// 	}
-
-	// 	return embed.MessageEmbed
-	// }
 
 	for _, goal := range goals {
 		nextDueDate, err := c.goals.NextCron(cmd.ResponseContext(), goal)
@@ -246,7 +258,14 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 	}
 
 	if _, err = cronexpr.Parse(cron); err != nil {
-		return fmt.Errorf("invalid cron expression: %w", err)
+		errMsg := fmt.Sprintf("Failed to create goal: invalid cron expression: %s", err.Error())
+
+		return cmd.Respond(
+			discordgo.InteractionResponseChannelMessageWithSource,
+			&discordgo.InteractionResponseData{
+				Content: errMsg,
+			},
+		)
 	}
 
 	activityType := discordutil.GetStringOption(subcommand.Options, "activity-type")
@@ -277,8 +296,7 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 		return fmt.Errorf("failed to calculate due date: %w", err)
 	}
 
-	// for testing
-	fmt.Printf("goal: %+v\n", goal)
+	cmd.Logger.Debug("Creating goal", slog.Any("goal", goal))
 
 	if err := c.goals.Create(cmd.ResponseContext(), goal); err != nil {
 		return fmt.Errorf("failed to create goal: %w", err)
@@ -290,4 +308,42 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 			Content: fmt.Sprintf("Goal **%s** created!", goal.Name),
 		},
 	)
+}
+
+func (c *GoalCommand) handleAutocomplete(cmd *bot.InteractionContext) error {
+	choices := [...]*discordgo.ApplicationCommandOptionChoice{
+		{
+			Name:  "Daily",
+			Value: "@daily",
+		},
+		{
+			Name:  "Weekly",
+			Value: "@weekly",
+		},
+		{
+			Name:  "Monthly",
+			Value: "@monthly",
+		},
+		{
+			Name:  "Yearly",
+			Value: "@yearly",
+		},
+	}
+
+	//filteredChoices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(choices))
+	//input := discordutil.GetFocusedOption(cmd.Options())
+	//
+	//if input != nil && input.Type == discordgo.ApplicationCommandOptionString && len(input.Value.(string)) > 0 {
+	//	for _, choice := range choices {
+	//		if strings.Contains(choice.Value.(string), input.Value.(string)) {
+	//			filteredChoices = append(filteredChoices, choice)
+	//		}
+	//	}
+	//} else {
+	//	filteredChoices = choices[:]
+	//}
+
+	return cmd.Respond(discordgo.InteractionApplicationCommandAutocompleteResult, &discordgo.InteractionResponseData{
+		Choices: choices[:],
+	})
 }
