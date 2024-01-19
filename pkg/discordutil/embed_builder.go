@@ -96,3 +96,26 @@ func (b *EmbedBuilder) SetTimestamp(t time.Time) *EmbedBuilder {
 	b.MessageEmbed.Timestamp = t.Format(time.RFC3339)
 	return b
 }
+
+// SplitOnFields returns multiple embed builders with identical content
+// as the current builder except the fields, which is split amongst the new builders.
+// Note: splits into shallow copies.
+func (b *EmbedBuilder) SplitOnFields(maxFields int) []*EmbedBuilder {
+	nPages := (len(b.Fields) + maxFields - 1) / maxFields
+	builders := make([]*EmbedBuilder, nPages)
+
+	for i := 0; i < nPages; i++ {
+		start := i * maxFields
+		end := (i + 1) * maxFields
+		shallowCopy := *b.MessageEmbed
+
+		if end > len(b.Fields) {
+			end = len(b.Fields)
+		}
+
+		shallowCopy.Fields = b.Fields[start:end]
+		builders[i] = &EmbedBuilder{&shallowCopy}
+	}
+
+	return builders
+}

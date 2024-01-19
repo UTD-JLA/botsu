@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -210,13 +211,17 @@ func (c *GoalCommand) handleList(cmd *bot.InteractionContext, _ *discordgo.Appli
 		)
 	}
 
+	if err := cmd.DeferResponse(); err != nil {
+		return err
+	}
+
 	embed := discordutil.NewEmbedBuilder().
 		SetTitle("Goals").
 		SetColor(discordutil.ColorPrimary).
 		SetTimestamp(time.Now())
 
 	for _, goal := range goals {
-		nextDueDate, err := c.goals.NextCron(cmd.ResponseContext(), goal)
+		nextDueDate, err := c.goals.NextCron(cmd.Context(), goal)
 
 		if err != nil {
 			return fmt.Errorf("failed to calculate next due date: %w", err)
@@ -233,12 +238,87 @@ func (c *GoalCommand) handleList(cmd *bot.InteractionContext, _ *discordgo.Appli
 		), false)
 	}
 
-	return cmd.Respond(
-		discordgo.InteractionResponseChannelMessageWithSource,
-		&discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
+	pages := embed.SplitOnFields(2)
+
+	if len(pages) == 1 {
+		_, err := cmd.Followup(
+			&discordgo.WebhookParams{
+				Embeds: []*discordgo.MessageEmbed{pages[0].MessageEmbed},
+			},
+			true,
+		)
+		return err
+	}
+
+	nextButton := discordgo.Button{
+		Label:    "Next",
+		Style:    discordgo.PrimaryButton,
+		CustomID: "next",
+		Disabled: false,
+	}
+
+	previousButton := discordgo.Button{
+		Label:    "Previous",
+		Style:    discordgo.SecondaryButton,
+		CustomID: "prev",
+		Disabled: false,
+	}
+
+	components := []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				previousButton,
+				nextButton,
+			},
 		},
+	}
+
+	msg, err := cmd.Followup(
+		&discordgo.WebhookParams{
+			Embeds:     []*discordgo.MessageEmbed{pages[0].MessageEmbed},
+			Components: components,
+		},
+		true,
 	)
+
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Minute*3)
+	defer cancel()
+
+	componentInteractions, err := cmd.Bot.NewMessageComponentInteractionChannel(ctx, msg)
+	if err != nil {
+		return err
+	}
+
+	page := 0
+
+	for ci := range componentInteractions {
+		switch ci.MessageComponentData().CustomID {
+		case "next":
+			page++
+		case "prev":
+			page--
+		}
+
+		page %= len(pages)
+
+		err := cmd.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Embeds:     []*discordgo.MessageEmbed{pages[page].MessageEmbed},
+				Components: components,
+			},
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
