@@ -9,5 +9,6 @@ CREATE TABLE goals (
     target BIGINT NOT NULL,
     current BIGINT NOT NULL DEFAULT 0,
     due_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
+    created_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+    deleted_at TIMESTAMP
 );
