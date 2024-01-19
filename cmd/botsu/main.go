@@ -122,9 +122,9 @@ func main() {
 
 	if !*skipMigration {
 		migrationURL := config.Database.ConnectionURL()
-		q := migrationURL.Query()
-		q.Add("sslmode", "disable")
-		migrationURL.RawQuery = q.Encode()
+		//q := migrationURL.Query()
+		//q.Add("sslmode", "disable")
+		//migrationURL.RawQuery = q.Encode()
 
 		// for debug purposes
 		files, err := migrations.MigrationFS.ReadDir(".")

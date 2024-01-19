@@ -27,6 +27,7 @@ type DatabaseConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 	Database string `toml:"database"`
+	SSLMode  string `toml:"ssl_mode"`
 
 	// used to set connection string, ignoring
 	// the other properties
@@ -39,10 +40,11 @@ func (c *DatabaseConfig) ConnectionURL() url.URL {
 	}
 
 	return url.URL{
-		Scheme: "postgres",
-		Host:   c.Host + fmt.Sprintf(":%d", c.Port),
-		User:   url.UserPassword(c.User, c.Password),
-		Path:   c.Database,
+		Scheme:   "postgres",
+		Host:     c.Host + fmt.Sprintf(":%d", c.Port),
+		User:     url.UserPassword(c.User, c.Password),
+		Path:     c.Database,
+		RawQuery: url.Values{"sslmode": []string{c.SSLMode}}.Encode(),
 	}
 }
 
@@ -58,6 +60,10 @@ func NewConfig() *Config {
 func (c *Config) LoadDefaults() {
 	if c.DataUpdateInterval.Abs() == 0 {
 		c.DataUpdateInterval = 7 * 24 * time.Hour
+	}
+
+	if c.Database.SSLMode == "" {
+		c.Database.SSLMode = "disable"
 	}
 }
 
@@ -126,6 +132,12 @@ func (c *Config) LoadEnv() error {
 
 	if ok {
 		c.Database.Database = database
+	}
+
+	sslMode, ok := os.LookupEnv("POSTGRES_SSL_MODE")
+
+	if ok {
+		c.Database.SSLMode = sslMode
 	}
 
 	connectionString, ok := os.LookupEnv("BOTSU_CONNECTION_STRING")
