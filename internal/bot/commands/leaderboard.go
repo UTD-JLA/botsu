@@ -196,7 +196,8 @@ func (c *LeaderboardCommand) Handle(ctx *bot.InteractionContext) error {
 		guild, err := s.State.Guild(i.GuildID)
 
 		if err != nil {
-			return err
+			missingMembers = append(missingMembers, m.UserID)
+			continue
 		}
 
 		member, err := s.State.Member(guild.ID, m.UserID)
