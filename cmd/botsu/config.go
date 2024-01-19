@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,10 +62,70 @@ func (c *Config) LoadDefaults() {
 }
 
 func (c *Config) LoadEnv() error {
+	tokenFile, ok := os.LookupEnv("BOTSU_TOKEN_FILE")
+
+	if ok {
+		token, err := os.ReadFile(tokenFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Token = string(token)
+	}
+
 	token, ok := os.LookupEnv("BOTSU_TOKEN")
 
 	if ok {
 		c.Token = token
+	}
+
+	host, ok := os.LookupEnv("POSTGRES_HOST")
+
+	if ok {
+		c.Database.Host = host
+	}
+
+	port, ok := os.LookupEnv("POSTGRES_PORT")
+
+	if ok {
+		portInt, err := strconv.Atoi(port)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.Port = portInt
+	}
+
+	userFile, ok := os.LookupEnv("POSTGRES_USER_FILE")
+
+	if ok {
+		user, err := os.ReadFile(userFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.User = string(user)
+	}
+
+	passwordFile, ok := os.LookupEnv("POSTGRES_PASSWORD_FILE")
+
+	if ok {
+		password, err := os.ReadFile(passwordFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.Password = string(password)
+	}
+
+	database, ok := os.LookupEnv("POSTGRES_DB")
+
+	if ok {
+		c.Database.Database = database
 	}
 
 	connectionString, ok := os.LookupEnv("BOTSU_CONNECTION_STRING")

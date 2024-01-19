@@ -5,3 +5,7 @@ data
 !internal/data
 bin
 pgadmin4
+secrets
+profiling
+dbdata
+.env
