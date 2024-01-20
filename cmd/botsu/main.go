@@ -16,6 +16,7 @@ import (
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/bot/commands"
+	"github.com/UTD-JLA/botsu/internal/goals"
 	"github.com/UTD-JLA/botsu/internal/guilds"
 	"github.com/UTD-JLA/botsu/internal/mediadata"
 	"github.com/UTD-JLA/botsu/internal/users"
@@ -121,9 +122,9 @@ func main() {
 
 	if !*skipMigration {
 		migrationURL := config.Database.ConnectionURL()
-		q := migrationURL.Query()
-		q.Add("sslmode", "disable")
-		migrationURL.RawQuery = q.Encode()
+		//q := migrationURL.Query()
+		//q.Add("sslmode", "disable")
+		//migrationURL.RawQuery = q.Encode()
 
 		// for debug purposes
 		files, err := migrations.MigrationFS.ReadDir(".")
@@ -187,11 +188,14 @@ func main() {
 	activityRepo := activities.NewActivityRepository(pool)
 	userRepo := users.NewUserRepository(pool)
 	guildRepo := guilds.NewGuildRepository(pool)
+	timeService := users.NewUserTimeService(userRepo, guildRepo)
+	goalRepo := goals.NewGoalRepository(pool)
+	goalService := goals.NewGoalService(goalRepo, timeService)
 
 	bot := bot.NewBot(logger.WithGroup("bot"), guildRepo)
 	bot.SetNoPanic(config.NoPanic)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, mediaSearcher))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, mediaSearcher, goalService))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
@@ -200,7 +204,7 @@ func main() {
 	bot.AddCommand(commands.GuildConfigCommandData, commands.NewGuildConfigCommand(guildRepo))
 	bot.AddCommand(commands.ExportCommandData, commands.NewExportCommand(activityRepo))
 	bot.AddCommand(commands.ImportCommandData, commands.NewImportCommand(activityRepo))
-
+	bot.AddCommand(commands.GoalCommandData, commands.NewGoalCommand(goalService))
 	logger.Info("Starting bot")
 
 	intents := discordgo.IntentsNone

@@ -1,0 +1,44 @@
+version: 3
+services:
+  postgres:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_DB: botsu
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_user
+      - postgres_password
+    volumes:
+      - ./dbdata:/var/lib/postgresql/data
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: botsu
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      BOTSU_TOKEN_FILE: /run/secrets/discord_token
+    env_file:
+      - .env
+    secrets:
+      - postgres_user
+      - postgres_password
+      - discord_token
+secrets:
+  postgres_user:
+    file: ./secrets/postgres_user
+  postgres_password:
+    file: ./secrets/postgres_password
+  discord_token:
+    file: ./secrets/discord_token
+volumes:
+  dbdata:

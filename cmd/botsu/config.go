@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ type DatabaseConfig struct {
 	User     string `toml:"user"`
 	Password string `toml:"password"`
 	Database string `toml:"database"`
+	SSLMode  string `toml:"ssl_mode"`
 
 	// used to set connection string, ignoring
 	// the other properties
@@ -38,10 +40,11 @@ func (c *DatabaseConfig) ConnectionURL() url.URL {
 	}
 
 	return url.URL{
-		Scheme: "postgres",
-		Host:   c.Host + fmt.Sprintf(":%d", c.Port),
-		User:   url.UserPassword(c.User, c.Password),
-		Path:   c.Database,
+		Scheme:   "postgres",
+		Host:     c.Host + fmt.Sprintf(":%d", c.Port),
+		User:     url.UserPassword(c.User, c.Password),
+		Path:     c.Database,
+		RawQuery: url.Values{"sslmode": []string{c.SSLMode}}.Encode(),
 	}
 }
 
@@ -58,13 +61,83 @@ func (c *Config) LoadDefaults() {
 	if c.DataUpdateInterval.Abs() == 0 {
 		c.DataUpdateInterval = 7 * 24 * time.Hour
 	}
+
+	if c.Database.SSLMode == "" {
+		c.Database.SSLMode = "disable"
+	}
 }
 
 func (c *Config) LoadEnv() error {
+	tokenFile, ok := os.LookupEnv("BOTSU_TOKEN_FILE")
+
+	if ok {
+		token, err := os.ReadFile(tokenFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Token = string(token)
+	}
+
 	token, ok := os.LookupEnv("BOTSU_TOKEN")
 
 	if ok {
 		c.Token = token
+	}
+
+	host, ok := os.LookupEnv("POSTGRES_HOST")
+
+	if ok {
+		c.Database.Host = host
+	}
+
+	port, ok := os.LookupEnv("POSTGRES_PORT")
+
+	if ok {
+		portInt, err := strconv.Atoi(port)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.Port = portInt
+	}
+
+	userFile, ok := os.LookupEnv("POSTGRES_USER_FILE")
+
+	if ok {
+		user, err := os.ReadFile(userFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.User = string(user)
+	}
+
+	passwordFile, ok := os.LookupEnv("POSTGRES_PASSWORD_FILE")
+
+	if ok {
+		password, err := os.ReadFile(passwordFile)
+
+		if err != nil {
+			return err
+		}
+
+		c.Database.Password = string(password)
+	}
+
+	database, ok := os.LookupEnv("POSTGRES_DB")
+
+	if ok {
+		c.Database.Database = database
+	}
+
+	sslMode, ok := os.LookupEnv("POSTGRES_SSL_MODE")
+
+	if ok {
+		c.Database.SSLMode = sslMode
 	}
 
 	connectionString, ok := os.LookupEnv("BOTSU_CONNECTION_STRING")
