@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"log/slog"
 	"strings"
 	"time"
@@ -13,8 +12,9 @@ import (
 	"github.com/UTD-JLA/botsu/internal/bot"
 	"github.com/UTD-JLA/botsu/internal/goals"
 	"github.com/UTD-JLA/botsu/pkg/discordutil"
+	"github.com/adhocore/gronx"
 	"github.com/bwmarrin/discordgo"
-	"github.com/hashicorp/cronexpr"
+	"github.com/jackc/pgx/v5"
 )
 
 var GoalCommandData = &discordgo.ApplicationCommand{
@@ -303,7 +303,7 @@ func (c *GoalCommand) handleList(cmd *bot.InteractionContext, _ *discordgo.Appli
 			page--
 		}
 
-		page %= len(pages)
+		page = (page + len(pages)) % len(pages)
 
 		err := cmd.Session().InteractionRespond(ci.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseUpdateMessage,
@@ -337,7 +337,9 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 		return err
 	}
 
-	if _, err = cronexpr.Parse(cron); err != nil {
+	gron := gronx.New()
+
+	if !gron.IsValid(cron) {
 		errMsg := fmt.Sprintf("Failed to create goal: invalid cron expression: %s", err.Error())
 
 		return cmd.Respond(

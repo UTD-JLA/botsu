@@ -7,7 +7,7 @@ import (
 
 	"github.com/UTD-JLA/botsu/internal/activities"
 	"github.com/UTD-JLA/botsu/internal/users"
-	"github.com/hashicorp/cronexpr"
+	"github.com/adhocore/gronx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -61,14 +61,15 @@ func (g *Goal) NextDueAt(location *time.Location) (t time.Time, err error) {
 		return g.DueAt, nil
 	}
 
-	expr, err := cronexpr.Parse(g.Cron)
+	return gronx.NextTickAfter(g.Cron, time.Now().In(location), true)
+}
 
-	if err != nil {
-		return
+func (g *Goal) PreviousDueAt(location *time.Location) (t time.Time, err error) {
+	if g.IsDue() {
+		return g.DueAt, nil
 	}
 
-	localTime := time.Now().In(location)
-	return expr.Next(localTime), nil
+	return gronx.PrevTickBefore(g.Cron, time.Now().In(location), false)
 }
 
 type GoalRepository struct {
@@ -275,6 +276,16 @@ func (s *GoalService) NextCron(ctx context.Context, g *Goal) (t time.Time, err e
 	return g.NextDueAt(location)
 }
 
+func (s *GoalService) PreviousCron(ctx context.Context, g *Goal) (t time.Time, err error) {
+	location, err := s.ts.GetTimeLocation(ctx, g.UserID, "")
+
+	if err != nil {
+		return
+	}
+
+	return g.PreviousDueAt(location)
+}
+
 func (s *GoalService) Create(ctx context.Context, g *Goal) (err error) {
 	err = s.repo.Create(ctx, g)
 	return
@@ -312,22 +323,40 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 			if err != nil {
 				return
 			}
+		}
 
-			err = s.repo.UpdateTx(ctx, tx, g)
+		var (
+			nextDueAt time.Time
+			prevDueAt time.Time
+		)
 
-			if err != nil {
-				return
-			}
+		nextDueAt, err = s.NextCron(ctx, g)
 
+		if err != nil {
+			return
+		}
+
+		prevDueAt, err = s.PreviousCron(ctx, g)
+
+		if err != nil {
+			return
+		}
+
+		// We don't care about activities that are not within the range of the previous and next due time
+		if a.Date.Before(prevDueAt) || a.Date.After(nextDueAt) {
 			continue
 		}
 
-		if g.Current >= g.Target || !g.MatchesActivity(a) {
+		// We don't care about activities that don't match the goal
+		if !g.MatchesActivity(a) {
 			continue
 		}
+
+		alreadyCompleted := g.Current >= g.Target
 
 		g.Current += a.Duration
-		if g.Current >= g.Target {
+
+		if g.Current >= g.Target && !alreadyCompleted {
 			completed = append(completed, g)
 		}
 
@@ -339,10 +368,6 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 	}
 
 	err = s.repo.FinishUpdate(ctx, tx)
-
-	if err != nil {
-		return
-	}
 
 	return
 }
