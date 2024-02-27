@@ -96,7 +96,7 @@ func (c *ConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		if !isValidTimezone(timezone) {
+		if !IsValidTimezone(timezone) {
 			embedBuilder.SetDescription("Invalid timezone.")
 
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
@@ -191,7 +191,7 @@ func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
 		timezone := focusedOption.StringValue()
 		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, maxResults)
 
-		for _, tz := range validTimezones {
+		for _, tz := range ValidTimezones {
 			target := getComparableTimezoneString(timezone)
 			compare := getComparableTimezoneString(tz)
 
@@ -253,10 +253,9 @@ func (c *ConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) error {
 	})
 }
 
-var validTimezones = []string{
+var ValidTimezones = []string{
 	"UTC",
 	"GMT",
-	"CST",
 	"EET",
 	"WET",
 	"CET",
@@ -302,8 +301,8 @@ var validTimezones = []string{
 	"Australia/Darwin",
 }
 
-func isValidTimezone(timezone string) bool {
-	for _, tz := range validTimezones {
+func IsValidTimezone(timezone string) bool {
+	for _, tz := range ValidTimezones {
 		if timezone == tz {
 			return true
 		}

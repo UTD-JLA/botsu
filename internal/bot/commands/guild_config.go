@@ -57,7 +57,7 @@ func (c *GuildConfigCommand) Handle(ctx *bot.InteractionContext) error {
 			return err
 		}
 
-		if !isValidTimezone(timezone) {
+		if !IsValidTimezone(timezone) {
 			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 				Content: "Invalid timezone",
 			})
@@ -89,7 +89,7 @@ func (c *GuildConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) err
 		results := make([]*discordgo.ApplicationCommandOptionChoice, 0, maxResults)
 
 		if timezone == "" {
-			for i, tz := range validTimezones {
+			for i, tz := range ValidTimezones {
 				if i >= maxResults {
 					break
 				}
@@ -101,7 +101,7 @@ func (c *GuildConfigCommand) handleAutocomplete(ctx *bot.InteractionContext) err
 			}
 
 		} else {
-			for _, tz := range validTimezones {
+			for _, tz := range ValidTimezones {
 				target := getComparableTimezoneString(timezone)
 				compare := getComparableTimezoneString(tz)
 
