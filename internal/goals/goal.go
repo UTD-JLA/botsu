@@ -313,7 +313,7 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 		return
 	}
 
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	for _, g := range goals {
 		if g.IsDue() {
