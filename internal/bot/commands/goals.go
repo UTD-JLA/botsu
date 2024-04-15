@@ -340,12 +340,10 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 	gron := gronx.New()
 
 	if !gron.IsValid(cron) {
-		errMsg := fmt.Sprintf("Failed to create goal: invalid cron expression: %s", err.Error())
-
 		return cmd.Respond(
 			discordgo.InteractionResponseChannelMessageWithSource,
 			&discordgo.InteractionResponseData{
-				Content: errMsg,
+				Content: "Invalid cron provided. See https://crontab.guru/ help on creating a valid cron expression.",
 			},
 		)
 	}
