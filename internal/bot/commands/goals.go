@@ -343,7 +343,7 @@ func (c *GoalCommand) handleCreate(cmd *bot.InteractionContext, subcommand *disc
 		return cmd.Respond(
 			discordgo.InteractionResponseChannelMessageWithSource,
 			&discordgo.InteractionResponseData{
-				Content: "Invalid cron provided. See https://crontab.guru/ help on creating a valid cron expression.",
+				Content: "Invalid cron provided. See https://crontab.guru/ for help on creating a valid cron expression.",
 			},
 		)
 	}
