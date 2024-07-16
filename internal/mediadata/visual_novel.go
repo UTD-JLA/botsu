@@ -55,14 +55,14 @@ func (vn VisualNovel) Marshal() (*bluge.Document, error) {
 	return doc, nil
 }
 
-func (vn *VisualNovel) Unmarshal(fields map[string][]byte) error {
-	vn.ID = string(fields["_id"])
-	vn.JapaneseTitle = string(fields[VNSearchFieldJapaneseTitle])
-	vn.EnglishTitle = string(fields[VNSearchFieldEnglishTitle])
-	vn.RomajiTitle = string(fields[VNSearchFieldRomajiTitle])
-	vn.ImageID = string(fields["image"])
+func (vn *VisualNovel) Unmarshal(fields map[string]string) error {
+	vn.ID = fields["_id"]
+	vn.JapaneseTitle = fields[VNSearchFieldJapaneseTitle]
+	vn.EnglishTitle = fields[VNSearchFieldEnglishTitle]
+	vn.RomajiTitle = fields[VNSearchFieldRomajiTitle]
+	vn.ImageID = fields["image"]
 
-	if string(fields["image_nsfw"]) == "true" {
+	if fields["image_nsfw"] == "true" {
 		vn.ImageNSFW = true
 	} else {
 		vn.ImageNSFW = false

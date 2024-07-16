@@ -16,7 +16,7 @@ type Store interface {
 
 type Read[T any] interface {
 	*T
-	Unmarshal(map[string][]byte) error
+	Unmarshal(map[string]string) error
 	SearchFields() []string
 }
 
@@ -57,10 +57,10 @@ func (rw *batchedReadWriter[T, PT]) read(ctx context.Context, id string) (record
 	}
 
 	record = PT(new(T))
-	fields := make(map[string][]byte)
+	fields := make(map[string]string)
 
 	err = next.VisitStoredFields(func(field string, value []byte) bool {
-		fields[field] = value
+		fields[field] = string(value)
 		return true
 	})
 
@@ -92,10 +92,10 @@ func (rw *batchedReadWriter[T, PT]) search(ctx context.Context, matchQuery strin
 
 		for next != nil && err == nil {
 			record := PT(new(T))
-			fields := make(map[string][]byte)
+			fields := make(map[string]string)
 
 			err = next.VisitStoredFields(func(field string, value []byte) bool {
-				fields[field] = value
+				fields[field] = string(value)
 				return true
 			})
 

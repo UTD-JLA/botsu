@@ -62,21 +62,21 @@ func (a Anime) Marshal() (*bluge.Document, error) {
 	return doc, nil
 }
 
-func (a *Anime) Unmarshal(fields map[string][]byte) error {
-	a.ID = string(fields["_id"])
-	a.PrimaryTitle = string(fields[AnimeSearchFieldPrimaryTitle])
-	a.RomajiOfficialTitle = string(fields[AnimeSearchFieldRomajiOfficialTitle])
-	a.JapaneseOfficialTitle = string(fields[AnimeSearchFieldJapaneseOfficialTitle])
-	a.EnglishOfficialTitle = string(fields[AnimeSearchFieldEnglishOfficialTitle])
-	a.Picture = string(fields["picture"])
-	a.Thumbnail = string(fields["thumbnail"])
+func (a *Anime) Unmarshal(fields map[string]string) error {
+	a.ID = fields["_id"]
+	a.PrimaryTitle = fields[AnimeSearchFieldPrimaryTitle]
+	a.RomajiOfficialTitle = fields[AnimeSearchFieldRomajiOfficialTitle]
+	a.JapaneseOfficialTitle = fields[AnimeSearchFieldJapaneseOfficialTitle]
+	a.EnglishOfficialTitle = fields[AnimeSearchFieldEnglishOfficialTitle]
+	a.Picture = fields["picture"]
+	a.Thumbnail = fields["thumbnail"]
 
-	if err := json.Unmarshal(fields["sources"], &a.Sources); err != nil {
-		return fmt.Errorf("unable to unmarshal sources: %w: %s", err, string(fields["sources"]))
+	if err := json.Unmarshal([]byte(fields["sources"]), &a.Sources); err != nil {
+		return fmt.Errorf("unable to unmarshal sources: %w: %s", err, fields["sources"])
 	}
 
-	if err := json.Unmarshal(fields["tags"], &a.Tags); err != nil {
-		return fmt.Errorf("unable to unmarshal tags: %w: %s", err, string(fields["tags"]))
+	if err := json.Unmarshal([]byte(fields["tags"]), &a.Tags); err != nil {
+		return fmt.Errorf("unable to unmarshal tags: %w: %s", err, fields["tags"])
 	}
 
 	return nil
