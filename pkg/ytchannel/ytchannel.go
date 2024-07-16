@@ -17,27 +17,39 @@ var ytInitialDataRegex = regexp.MustCompile(`var ytInitialData\s*=\s*(\{.+?\});`
 var ErrInvalidChannelIdentifier = errors.New("invalid channel identifier string, you should either provide a handle (starting with '@') or an ID (starting with 'UC')")
 var ErrYtInitialDataNotFound = errors.New("could not find ytInitialData")
 
-type navigationEndpoint struct {
-	BrowseEndpoint struct {
-		CanonicalBaseUrl string `json:"canonicalBaseUrl"`
-	}
-}
-
-type thumbnailsWrapper struct {
-	Thumbnails []*Thumbail `json:"thumbnails"`
-}
-
-type headerRenderer struct {
-	Title              string             `json:"title"`
-	ChannelID          string             `json:"channelId"`
-	Avatars            thumbnailsWrapper  `json:"avatar"`
-	Banners            thumbnailsWrapper  `json:"banner"`
-	NavigationEndpoint navigationEndpoint `json:"navigationEndpoint"`
-}
-
 type ytInitialData struct {
+	Metadata struct {
+		ChannelMetadataRenderer struct {
+			Title            string `json:"title"`
+			ExternalID       string `json:"externalId"`
+			VanityChannelURL string `json:"vanityChannelUrl"`
+		}
+	}
 	Header struct {
-		HeaderRenderer headerRenderer `json:"c4TabbedHeaderRenderer"`
+		PageHeaderRenderer struct {
+			Content struct {
+				PageHeaderViewModel struct {
+					Banner struct {
+						ImageBannerViewModel struct {
+							Image struct {
+								Sources []*Thumbail `json:"sources"`
+							} `json:"image"`
+						} `json:"imageBannerViewModel"`
+					} `json:"banner"`
+					Image struct {
+						DecoratedAvatarViewModel struct {
+							Avatar struct {
+								AvatarViewModel struct {
+									Image struct {
+										Sources []*Thumbail `json:"sources"`
+									} `json:"image"`
+								} `json:"avatarViewModel"`
+							} `json:"avatar"`
+						} `json:"decoratedAvatarViewModel"`
+					} `json:"image"`
+				} `json:"pageHeaderViewModel"`
+			} `json:"content"`
+		} `json:"pageHeaderRenderer"`
 	} `json:"header"`
 }
 
@@ -55,13 +67,13 @@ type Channel struct {
 	Banners []*Thumbail
 }
 
-func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err error) {
+func GetYoutubeChannel(ctx context.Context, handleOrID string) (ch *Channel, err error) {
 	var profileURL string
 
-	if strings.HasPrefix(handle, "@") {
-		profileURL = fmt.Sprintf("https://youtube.com/%s", handle)
-	} else if strings.HasPrefix(handle, "UC") {
-		profileURL = fmt.Sprintf("https://youtube.com/channel/%s", handle)
+	if strings.HasPrefix(handleOrID, "@") {
+		profileURL = fmt.Sprintf("https://youtube.com/%s", handleOrID)
+	} else if strings.HasPrefix(handleOrID, "UC") {
+		profileURL = fmt.Sprintf("https://youtube.com/channel/%s", handleOrID)
 	} else {
 		err = ErrInvalidChannelIdentifier
 		return
@@ -88,7 +100,6 @@ func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err err
 	}
 
 	var initialData ytInitialData
-
 	data := ytInitialDataRegex.FindSubmatch(body)
 
 	if len(data) < 2 {
@@ -100,16 +111,24 @@ func GetYoutubeChannel(ctx context.Context, handle string) (ch *Channel, err err
 		return
 	}
 
-	if len(initialData.Header.HeaderRenderer.NavigationEndpoint.BrowseEndpoint.CanonicalBaseUrl) > 1 {
-		handle = initialData.Header.HeaderRenderer.NavigationEndpoint.BrowseEndpoint.CanonicalBaseUrl[1:]
+	handleIndex := strings.LastIndex(initialData.Metadata.ChannelMetadataRenderer.VanityChannelURL, "/")
+	if handleIndex == -1 {
+		err = errors.New("could not find handle")
+		return
+	}
+	handle := initialData.Metadata.ChannelMetadataRenderer.VanityChannelURL[handleIndex+1:]
+	if len(handle) == 0 || handle[0] != '@' {
+		err = errors.New("could not find handle")
+		return
 	}
 
+	// TODO: fix banners and avatars
 	ch = &Channel{
+		Name:    initialData.Metadata.ChannelMetadataRenderer.Title,
+		ID:      initialData.Metadata.ChannelMetadataRenderer.ExternalID,
 		Handle:  handle,
-		Name:    initialData.Header.HeaderRenderer.Title,
-		ID:      initialData.Header.HeaderRenderer.ChannelID,
-		Avatars: initialData.Header.HeaderRenderer.Avatars.Thumbnails,
-		Banners: initialData.Header.HeaderRenderer.Banners.Thumbnails,
+		Avatars: initialData.Header.PageHeaderRenderer.Content.PageHeaderViewModel.Image.DecoratedAvatarViewModel.Avatar.AvatarViewModel.Image.Sources,
+		Banners: initialData.Header.PageHeaderRenderer.Content.PageHeaderViewModel.Banner.ImageBannerViewModel.Image.Sources,
 	}
 
 	return
