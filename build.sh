@@ -23,7 +23,7 @@ do
 
 	echo "Building $package for $GOOS/$GOARCH..."
 
-	env GOOS=$GOOS GOARCH=$GOARCH go build -o $output_dir/$output_name $package
+	env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -o $output_dir/$output_name -trimpath $package
 	if [ $? -ne 0 ]; then
    		echo 'An error has occurred! Aborting the script execution...'
 		exit 1
