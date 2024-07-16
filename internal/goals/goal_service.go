@@ -73,7 +73,10 @@ func (s *GoalService) CheckCompleted(ctx context.Context, a *activities.Activity
 		}
 
 		if changed {
-			s.UpdateTx(ctx, tx, g)
+			err = s.UpdateTx(ctx, tx, g)
+			if err != nil {
+				return
+			}
 		}
 	}
 
@@ -101,7 +104,10 @@ func (s *GoalService) CheckAll(ctx context.Context, userID string) (goals []*Goa
 				return
 			}
 			g.Current = 0
-			s.UpdateTx(ctx, tx, g)
+			err = s.UpdateTx(ctx, tx, g)
+			if err != nil {
+				return
+			}
 		}
 	}
 
