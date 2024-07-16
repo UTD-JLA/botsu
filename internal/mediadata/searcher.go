@@ -122,7 +122,7 @@ func (rw *batchedReadWriter[T, PT]) search(ctx context.Context, matchQuery strin
 	return
 }
 
-func (rw *batchedReadWriter[T, PT]) overwriteData(ctx context.Context, data []T) (err error) {
+func (rw *batchedReadWriter[T, PT]) overwriteData(data []T) (err error) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 
@@ -204,19 +204,17 @@ func NewMediaSearcher(path string) (s *MediaSearcher) {
 func (s *MediaSearcher) UpdateData(ctx context.Context) (err error) {
 	s.Logger.Info("Updating searcher data")
 	errs := make(chan error, 2)
-	ctxWithCancel, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	go func() {
 		s.Logger.Info("Downloaded anime data")
-		animeData, err := DownloadAnime(ctxWithCancel)
+		animeData, err := DownloadAnime(ctx)
 
 		if err != nil {
 			errs <- fmt.Errorf("unable to download anime data: %w", err)
 			return
 		}
 
-		if err = s.animeRW.overwriteData(ctxWithCancel, animeData); err != nil {
+		if err = s.animeRW.overwriteData(animeData); err != nil {
 			errs <- fmt.Errorf("unable to overwrite anime data: %w", err)
 			return
 		}
@@ -226,14 +224,14 @@ func (s *MediaSearcher) UpdateData(ctx context.Context) (err error) {
 
 	go func() {
 		s.Logger.Info("Downloaded visual novel data")
-		vnData, err := DownloadVisualNovels(ctxWithCancel)
+		vnData, err := DownloadVisualNovels(ctx)
 
 		if err != nil {
 			errs <- fmt.Errorf("unable to download visual novel data: %w", err)
 			return
 		}
 
-		if err = s.vnRW.overwriteData(ctxWithCancel, vnData); err != nil {
+		if err = s.vnRW.overwriteData(vnData); err != nil {
 			errs <- fmt.Errorf("unable to overwrite visual novel data: %w", err)
 			return
 		}
