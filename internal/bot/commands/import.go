@@ -67,7 +67,6 @@ func NewImportCommand(r *activities.ActivityRepository) *ImportCommand {
 func (c *ImportCommand) handleList(
 	ctx context.Context,
 	cmd *bot.InteractionContext,
-	opts []*discordgo.ApplicationCommandInteractionDataOption,
 ) error {
 	history, err := c.r.GetRecentImportsByUserID(ctx, cmd.User().ID, 10)
 
@@ -181,7 +180,7 @@ func (c *ImportCommand) Handle(cmd *bot.InteractionContext) error {
 	opts = opts[0].Options
 
 	if subcommand == "list" {
-		return c.handleList(ctx, cmd, opts)
+		return c.handleList(ctx, cmd)
 	}
 
 	if subcommand == "undo" {

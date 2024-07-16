@@ -182,7 +182,7 @@ func (c *GoalCommand) handleDelete(cmd *bot.InteractionContext, subcommand *disc
 
 	cmd.Logger.Debug("Deleting goal", slog.Int64("goal_id", id))
 
-	err = c.goals.Delete(cmd.ResponseContext(), id)
+	err = c.goals.DeleteByID(cmd.ResponseContext(), id)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (c *GoalCommand) handleDelete(cmd *bot.InteractionContext, subcommand *disc
 }
 
 func (c *GoalCommand) handleList(cmd *bot.InteractionContext, _ *discordgo.ApplicationCommandInteractionDataOption) error {
-	goals, err := c.goals.FindByUserID(cmd.ResponseContext(), cmd.User().ID)
+	goals, err := c.goals.CheckAll(cmd.ResponseContext(), cmd.User().ID)
 
 	if err != nil {
 		return fmt.Errorf("failed to find goals: %w", err)
