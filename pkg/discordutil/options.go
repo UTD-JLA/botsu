@@ -3,6 +3,8 @@ package discordutil
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -256,4 +258,99 @@ func GetRequiredRoleOption(options []*discordgo.ApplicationCommandInteractionDat
 	}
 
 	return option.RoleValue(s, gid), nil
+}
+
+func UnmarshalOptions(options []*discordgo.ApplicationCommandInteractionDataOption, v any) error {
+	rv := reflect.ValueOf(v)
+	rt := reflect.TypeOf(v)
+
+	if kind := rt.Kind(); kind != reflect.Pointer {
+		return fmt.Errorf("UnmarshalOptions: expected pointer, got: %s", kind)
+	}
+
+	elemValue := rv.Elem()
+	elemType := rt.Elem()
+
+	if elemKind := elemType.Kind(); elemKind != reflect.Struct {
+		return fmt.Errorf("UnmarshalOptions: expected struct pointer, got pointer of: %s", elemKind)
+	}
+
+	numFields := elemType.NumField()
+	for i := 0; i < numFields; i++ {
+		field := elemValue.Field(i)
+		fieldType := elemType.Field(i)
+		if !fieldType.IsExported() {
+			continue
+		}
+		tag := fieldType.Tag.Get("discordopt")
+		fields := strings.Split(tag, ",")
+		name := fields[0]
+		if name == "" || name == "-" {
+			continue
+		}
+		required := false
+		for _, f := range fields[1:] {
+			if f == "required" {
+				required = true
+			}
+		}
+		option := GetOption(options, tag)
+		if option == nil {
+			if required {
+				return fmt.Errorf("UnmarshalOptions: required option not found: %s", name)
+			}
+			continue
+		}
+
+		if err := setField(field, fieldType.Type, option); err != nil {
+			err = fmt.Errorf("UnmarshalOptions: %s: %w", name, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setField(value reflect.Value, reflectType reflect.Type, option *discordgo.ApplicationCommandInteractionDataOption) error {
+	// TODO: Subcommands, command groups, raw options, user/role/channel values?
+	switch k := value.Kind(); k {
+	case reflect.Struct:
+		switch v := value.Interface(); v.(type) {
+		case discordgo.ApplicationCommandInteractionDataOption:
+			value.Set(reflect.ValueOf(*option))
+		default:
+			return errors.New("struct field only supports ApplicationCommandInteractionDataOption")
+		}
+	case reflect.Pointer:
+		value.Set(reflect.New(reflectType.Elem()))
+		return setField(value.Elem(), reflectType.Elem(), option)
+	case reflect.String:
+		if option.Type != discordgo.ApplicationCommandOptionString {
+			return errors.New("string field expected string option")
+		}
+		value.SetString(option.StringValue())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if option.Type != discordgo.ApplicationCommandOptionInteger {
+			return errors.New("int field expected int option")
+		}
+		value.SetInt(option.IntValue())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if option.Type != discordgo.ApplicationCommandOptionInteger {
+			return errors.New("uint field expected integer option")
+		}
+		value.SetUint(option.UintValue())
+	case reflect.Float32, reflect.Float64:
+		if option.Type != discordgo.ApplicationCommandOptionNumber {
+			return errors.New("float field expected number option")
+		}
+		value.SetFloat(option.FloatValue())
+	case reflect.Bool:
+		if option.Type != discordgo.ApplicationCommandOptionBoolean {
+			return errors.New("bool field expected boolean option")
+		}
+		value.SetBool(option.BoolValue())
+	default:
+		return fmt.Errorf("unexpected field kind: %s", k)
+	}
+	return nil
 }
