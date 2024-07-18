@@ -24,13 +24,10 @@ import (
 	"github.com/UTD-JLA/botsu/pkg/ref"
 	"github.com/bwmarrin/discordgo"
 	"github.com/esimov/stackblur-go"
-	"github.com/golang-module/carbon/v2"
-	"github.com/jackc/pgx/v5"
 	"github.com/kkdai/youtube/v2"
 )
 
 var (
-	errInvalidDateInput              = errors.New("invalid date")
 	errInvalidMediaAutocompleteInput = errors.New("invalid media autocomplete input")
 )
 
@@ -301,6 +298,7 @@ type LogCommand struct {
 	guildRepo     *guilds.GuildRepository
 	mediaSearcher *mediadata.MediaSearcher
 	goalService   *goals.GoalService
+	timeService   *users.UserTimeService
 	ytClient      youtube.Client
 }
 
@@ -309,14 +307,16 @@ func NewLogCommand(
 	ur *users.UserRepository,
 	gr *guilds.GuildRepository,
 	ms *mediadata.MediaSearcher,
-	goalService *goals.GoalService,
+	gs *goals.GoalService,
+	ts *users.UserTimeService,
 ) *LogCommand {
 	return &LogCommand{
 		activityRepo:  ar,
 		userRepo:      ur,
 		mediaSearcher: ms,
 		guildRepo:     gr,
-		goalService:   goalService,
+		goalService:   gs,
+		timeService:   ts,
 		ytClient:      youtube.Client{},
 	}
 }
@@ -352,11 +352,9 @@ func (c *LogCommand) Handle(ctx *bot.InteractionContext) error {
 
 func (c *LogCommand) checkGoals(cmd *bot.InteractionContext, a *activities.Activity) error {
 	completedGoals, err := c.goalService.CheckCompleted(cmd.Context(), a)
-
 	if err != nil {
 		return err
 	}
-
 	if len(completedGoals) == 0 {
 		return nil
 	}
@@ -393,17 +391,14 @@ func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Sessio
 
 	subcommand := data.Options[0].Name
 	focusedOption := discordutil.GetFocusedOption(data.Options[0].Options)
-
 	if focusedOption == nil {
 		return nil
 	}
-
 	if focusedOption.Name != "name" {
 		return nil
 	}
 
 	var mediaType string
-
 	if subcommand == "anime" {
 		mediaType = activities.ActivityMediaTypeAnime
 	} else if subcommand == "vn" {
@@ -412,7 +407,6 @@ func (c *LogCommand) handleAutocomplete(ctx context.Context, s *discordgo.Sessio
 
 	input := focusedOption.StringValue()
 	results, err := c.createAutocompleteResult(ctx, mediaType, input)
-
 	if err != nil {
 		return err
 	}
@@ -431,30 +425,36 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 	}
 
 	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
 
-	args := subcommand.Options
+	var args struct {
+		Name            string `discordopt:"name,required"`
+		Episodes        uint   `discordopt:"episodes,required"`
+		EpisodeDuration uint   `discordopt:"episode-duration"`
+		Date            string `discordopt:"date"`
+	}
+
+	err := discordutil.UnmarshalOptions(subcommand.Options, &args)
+	if err != nil {
+		return err
+	}
+
 	activity := activities.NewActivity()
-
-	if ctx.Interaction().GuildID != "" {
-		activity.GuildID = &ctx.Interaction().GuildID
+	if guildID != "" {
+		activity.GuildID = &guildID
 	}
 
-	episodeCount, err := discordutil.GetRequiredUintOption(args, "episodes")
-	if err != nil {
-		return err
+	episodeDuration := args.EpisodeDuration
+	if episodeDuration == 0 {
+		episodeDuration = 24
 	}
-	episodeDuration := discordutil.GetUintOptionOrDefault(args, "episode-duration", 24)
-	duration := episodeDuration * episodeCount
+	duration := episodeDuration * args.Episodes
 
-	nameInput, err := discordutil.GetRequiredStringOption(args, "name")
-	if err != nil {
-		return err
-	}
 	thumbnail := ""
 	var namedSources map[string]string
-
-	if isAutocompletedEntry(nameInput) {
-		anime, titleField, err := c.resolveAnimeFromAutocomplete(nameInput)
+	activity.Name = args.Name
+	if isAutocompletedEntry(args.Name) {
+		anime, titleField, err := c.resolveAnimeFromAutocomplete(args.Name)
 		if err != nil {
 			return err
 		}
@@ -476,29 +476,30 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		activity.SetMeta("title", anime.PrimaryTitle)
 		activity.SetMeta("tags", anime.Tags)
 		namedSources = getNamedSources(anime.Sources)
-	} else {
-		activity.Name = nameInput
 	}
 
-	activity.SetMeta("episodes", episodeCount)
-
+	activity.SetMeta("episodes", args.Episodes)
 	activity.Duration = time.Duration(duration) * time.Minute
 	activity.PrimaryType = activities.ActivityImmersionTypeListening
 	activity.MediaType = ref.New(activities.ActivityMediaTypeAnime)
 	activity.UserID = userID
 
-	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
-		if errors.Is(err, errInvalidDateInput) {
+	if args.Date != "" {
+		location, err := c.timeService.GetTimeLocation(ctx.Context(), userID, guildID)
+		if err != nil {
+			return err
+		}
+
+		activity.Date, err = time.ParseInLocation(time.DateTime, args.Date, location)
+		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
+			return err
 		}
-
-		return err
 	}
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
-
 	if err != nil {
 		return err
 	}
@@ -507,7 +508,7 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 		SetTitle("Activity logged!").
 		AddField("Title", activity.Name, false).
 		AddField("Duration", activity.Duration.String(), false).
-		AddField("Episodes Watched", fmt.Sprintf("%d", episodeCount), false).
+		AddField("Episodes Watched", fmt.Sprintf("%d", args.Episodes), false).
 		SetFooter(fmt.Sprintf("ID: %d", activity.ID), "").
 		SetThumbnail(thumbnail).
 		SetTimestamp(activity.Date).
@@ -536,7 +537,6 @@ func (c *LogCommand) handleAnime(ctx *bot.InteractionContext, subcommand *discor
 	}
 
 	_, err = ctx.Followup(&params, false)
-
 	if err != nil {
 		return err
 	}
@@ -549,19 +549,21 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		return err
 	}
 
+	var args struct {
+		Name     string `discordopt:"name,required"`
+		Pages    uint   `discordopt:"pages,required"`
+		Duration uint   `discordopt:"duration"`
+		Date     string `discordopt:"date"`
+	}
+
 	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
 
-	args := subcommand.Options
 	activity := activities.NewActivity()
-
-	if ctx.Interaction().GuildID != "" {
-		activity.GuildID = &ctx.Interaction().GuildID
+	if guildID != "" {
+		activity.GuildID = &guildID
 	}
-
-	var err error
-	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
-		return err
-	}
+	activity.Name = args.Name
 	activity.PrimaryType = activities.ActivityImmersionTypeReading
 	if subcommand.Name == "book" {
 		activity.MediaType = ref.New(activities.ActivityMediaTypeBook)
@@ -570,13 +572,10 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 	}
 	activity.UserID = userID
 
-	pageCount, err := discordutil.GetRequiredUintOption(args, "pages")
-	if err != nil {
-		return err
-	}
-	duration := discordutil.GetUintOption(args, "duration")
+	pageCount := args.Pages
+	duration := args.Duration
 
-	if pageCount == 0 && duration == nil {
+	if pageCount == 0 && duration == 0 {
 		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "You must provide either a page count or a duration.",
 		}, false)
@@ -585,9 +584,9 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 
 	var durationMinutes float64
 
-	if duration != nil && pageCount != 0 {
+	if duration != 0 && pageCount != 0 {
 		// if both duration and page count is provided
-		durationMinutes = float64(*duration)
+		durationMinutes = float64(duration)
 		activity.SetMeta("pages", pageCount)
 		activity.SetMeta("speed", float64(pageCount)/(durationMinutes))
 	} else if pageCount != 0 {
@@ -596,23 +595,28 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		activity.SetMeta("pages", pageCount)
 	} else {
 		// if only duration is provided
-		durationMinutes = float64(*duration)
+		durationMinutes = float64(duration)
 	}
 
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
 
-	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
-		if errors.Is(err, errInvalidDateInput) {
+	if args.Date != "" {
+		location, err := c.timeService.GetTimeLocation(ctx.Context(), userID, guildID)
+		if err != nil {
+			return err
+		}
+
+		activity.Date, err = time.ParseInLocation(time.DateTime, args.Date, location)
+		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
+			return err
 		}
-
-		return err
 	}
 
-	if err = c.activityRepo.Create(ctx.Context(), activity); err != nil {
+	if err := c.activityRepo.Create(ctx.Context(), activity); err != nil {
 		return err
 	}
 
@@ -628,10 +632,9 @@ func (c *LogCommand) handleBook(ctx *bot.InteractionContext, subcommand *discord
 		embed.AddField("Pages Read", fmt.Sprintf("%d", pageCount), false)
 	}
 
-	_, err = ctx.Followup(&discordgo.WebhookParams{
+	_, err := ctx.Followup(&discordgo.WebhookParams{
 		Embeds: []*discordgo.MessageEmbed{embed.MessageEmbed},
 	}, false)
-
 	if err != nil {
 		return err
 	}
@@ -644,30 +647,36 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 		return err
 	}
 
-	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
-
-	args := subcommand.Options
-	activity := activities.NewActivity()
-
-	if ctx.Interaction().GuildID != "" {
-		activity.GuildID = &ctx.Interaction().GuildID
+	var args struct {
+		Name               string `discordopt:"name,required"`
+		Characters         uint   `discordopt:"characters,required"`
+		Duration           uint   `discordopt:"duration"`
+		ReadingSpeed       uint   `discordopt:"reading-speed"`
+		ReadingSpeedHourly uint   `discordopt:"reading-speed-hourly"`
+		Date               string `discordopt:"date"`
 	}
 
-	var err error
-	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
+	err := discordutil.UnmarshalOptions(subcommand.Options, &args)
+	if err != nil {
 		return err
 	}
+
+	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
+
+	activity := activities.NewActivity()
+	if guildID != "" {
+		activity.GuildID = &guildID
+	}
+	activity.Name = args.Name
 	activity.PrimaryType = activities.ActivityImmersionTypeReading
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVisualNovel)
 	activity.UserID = userID
 
-	charCount, err := discordutil.GetRequiredUintOption(args, "characters")
-	if err != nil {
-		return err
-	}
-	duration := discordutil.GetUintOption(args, "duration")
-	readingSpeed := discordutil.GetUintOption(args, "reading-speed")
-	readingSpeedHourly := discordutil.GetUintOption(args, "reading-speed-hourly")
+	charCount := args.Characters
+	duration := args.Duration
+	readingSpeed := args.ReadingSpeed
+	readingSpeedHourly := args.ReadingSpeedHourly
 
 	thumbnail := ""
 	attachments := make([]*discordgo.File, 0)
@@ -714,7 +723,7 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 
 	var durationMinutes float64
 
-	if charCount == 0 && duration == nil {
+	if charCount == 0 && duration == 0 {
 		_, err := ctx.Followup(&discordgo.WebhookParams{
 			Content: "You must provide either a character count or a duration.",
 		}, false)
@@ -722,13 +731,12 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 	}
 
 	speedIsKnown := true
-
-	if duration != nil {
-		durationMinutes = float64(*duration)
-	} else if readingSpeed != nil {
-		durationMinutes = float64(charCount) / float64(*readingSpeed)
-	} else if readingSpeedHourly != nil {
-		durationMinutes = float64(charCount) / (float64(*readingSpeedHourly) / 60.0)
+	if duration > 0 {
+		durationMinutes = float64(duration)
+	} else if readingSpeed > 0 {
+		durationMinutes = float64(charCount) / float64(readingSpeed)
+	} else if readingSpeedHourly > 0 {
+		durationMinutes = float64(charCount) / (float64(readingSpeedHourly) / 60.0)
 	} else {
 		durationMinutes = float64(charCount) / 150.0
 		speedIsKnown = false
@@ -740,19 +748,22 @@ func (c *LogCommand) handleVisualNovel(ctx *bot.InteractionContext, subcommand *
 
 	// because time.Duration casts to uint64, we need to convert to seconds first
 	activity.Duration = time.Duration(durationMinutes*60.0) * time.Second
+	if args.Date != "" {
+		location, err := c.timeService.GetTimeLocation(ctx.Context(), userID, guildID)
+		if err != nil {
+			return err
+		}
 
-	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
-		if errors.Is(err, errInvalidDateInput) {
+		activity.Date, err = time.ParseInLocation(time.DateTime, args.Date, location)
+		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
+			return err
 		}
-
-		return err
 	}
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
-
 	if err != nil {
 		return err
 	}
@@ -787,61 +798,74 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		return err
 	}
 
-	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
-
-	args := subcommand.Options
-	activity := activities.NewActivity()
-
-	if ctx.Interaction().GuildID != "" {
-		activity.GuildID = &ctx.Interaction().GuildID
+	var args struct {
+		URL             string `discordopt:"url,required"`
+		Duration        uint   `discordopt:"duration"`
+		ComplexDuration string `discordopt:"complex-duration"`
+		Date            string `discordopt:"date"`
 	}
 
-	URL, err := discordutil.GetRequiredStringOption(args, "url")
-
+	err := discordutil.UnmarshalOptions(subcommand.Options, &args)
 	if err != nil {
 		return err
 	}
 
-	u, err := url.Parse(URL)
+	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
 
+	u, err := url.Parse(args.URL)
 	if err != nil {
+		_, err = ctx.Followup(&discordgo.WebhookParams{
+			Content: "Invalid URL provided.",
+		}, false)
 		return err
 	}
 
 	video, err := activities.GetVideoInfo(ctx.Context(), u, false)
-
 	if err != nil {
 		return err
 	}
 
+	activity := activities.NewActivity()
 	activity.Name = video.Title
 	activity.PrimaryType = activities.ActivityImmersionTypeListening
 	activity.MediaType = ref.New(activities.ActivityMediaTypeVideo)
 	activity.UserID = userID
 	activity.Meta = video
+	if guildID != "" {
+		activity.GuildID = &guildID
+	}
 
-	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
-		if errors.Is(err, errInvalidDateInput) {
+	if args.Date != "" {
+		location, err := c.timeService.GetTimeLocation(ctx.Context(), userID, guildID)
+		if err != nil {
+			return err
+		}
+
+		activity.Date, err = time.ParseInLocation(time.DateTime, args.Date, location)
+		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: "Invalid date provided.",
 			}, false)
+			return err
 		}
-
-		return err
 	}
 
-	if durationMinutes := discordutil.GetUintOption(args, "duration"); durationMinutes != nil {
-		activity.Duration = time.Duration(*durationMinutes) * time.Minute
-	} else if complexDuration := discordutil.GetStringOption(args, "complex-duration"); complexDuration != nil {
-		var lowerDuration time.Duration
-		var tDuration time.Duration
+	activity.Duration = video.Duration
+	if args.Duration > 0 {
+		activity.Duration = time.Duration(args.Duration) * time.Minute
+	}
+	if args.ComplexDuration != "" {
+		var (
+			lowerDuration time.Duration
+			tDuration     time.Duration
+		)
 
 		if tSeconds, err := strconv.Atoi(u.Query().Get("t")); err == nil {
 			tDuration = time.Second * time.Duration(tSeconds)
 		}
 
 		lowerDuration, err = c.activityRepo.GetTotalWatchTimeOfVideoByUserID(ctx.Context(), userID, video.Platform, video.ID)
-
 		if err != nil {
 			return err
 		}
@@ -852,8 +876,7 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 			"_": lowerDuration,
 		}
 
-		activity.Duration, err = parseDurationComplex(*complexDuration, video.Duration, vars)
-
+		activity.Duration, err = parseDurationComplex(args.ComplexDuration, video.Duration, vars)
 		if err != nil {
 			_, err = ctx.Followup(&discordgo.WebhookParams{
 				Content: fmt.Sprintf("Invalid duration provided: %s", err.Error()),
@@ -867,18 +890,14 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 			}, false)
 			return err
 		}
-	} else {
-		activity.Duration = video.Duration
 	}
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
-
 	if err != nil {
 		return err
 	}
 
 	durationString := activity.Duration.String()
-
 	if activity.Duration != video.Duration {
 		durationString = fmt.Sprintf("%s / %s", activity.Duration.String(), video.Duration.String())
 	}
@@ -898,7 +917,7 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 			discordgo.Button{
 				Label: "Video",
 				Style: discordgo.LinkButton,
-				URL:   URL,
+				URL:   args.URL,
 			},
 		},
 	}
@@ -925,7 +944,6 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 		Embeds:     []*discordgo.MessageEmbed{embed.MessageEmbed},
 		Components: []discordgo.MessageComponent{row},
 	}, false)
-
 	if err != nil {
 		return err
 	}
@@ -935,41 +953,48 @@ func (c *LogCommand) handleVideo(ctx *bot.InteractionContext, subcommand *discor
 
 func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *discordgo.ApplicationCommandInteractionDataOption) error {
 	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
+	guildID := ctx.Interaction().GuildID
 
-	args := subcommand.Options
-	activity := activities.NewActivity()
-
-	if ctx.Interaction().GuildID != "" {
-		activity.GuildID = &ctx.Interaction().GuildID
+	var args struct {
+		Name      string  `discordopt:"name,required"`
+		Type      string  `discordopt:"type,required"`
+		Duration  uint    `discordopt:"duration,required"`
+		MediaType *string `discordopt:"media-type"`
+		Date      string  `discordopt:"date"`
 	}
 
-	var err error
-	if activity.Name, err = discordutil.GetRequiredStringOption(args, "name"); err != nil {
-		return err
-	}
-	if activity.PrimaryType, err = discordutil.GetRequiredStringOption(args, "type"); err != nil {
-		return err
-	}
-	durationOption, err := discordutil.GetRequiredUintOption(args, "duration")
+	// args := subcommand.Options
+	err := discordutil.UnmarshalOptions(subcommand.Options, &args)
 	if err != nil {
 		return err
 	}
-	activity.Duration = time.Duration(durationOption) * time.Minute
-	activity.MediaType = discordutil.GetStringOption(args, "media-type")
-	activity.UserID = userID
 
-	if activity.Date, err = c.parseDateOption(ctx, args); err != nil {
-		if errors.Is(err, errInvalidDateInput) {
-			_, err = ctx.Followup(&discordgo.WebhookParams{
-				Content: "Invalid date provided.",
-			}, false)
+	activity := activities.NewActivity()
+	activity.Name = args.Name
+	activity.PrimaryType = args.Type
+	activity.Duration = time.Duration(args.Duration) * time.Minute
+	activity.MediaType = args.MediaType
+	activity.UserID = userID
+	activity.Date = time.Now()
+	if guildID != "" {
+		activity.GuildID = &guildID
+	}
+
+	if args.Date != "" {
+		location, err := c.timeService.GetTimeLocation(ctx.Context(), userID, guildID)
+		if err != nil {
+			return err
 		}
 
-		return err
+		activity.Date, err = time.ParseInLocation(time.DateTime, args.Date, location)
+		if err != nil {
+			return ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
+				Content: "Invalid date provided.",
+			})
+		}
 	}
 
 	err = c.activityRepo.Create(ctx.Context(), activity)
-
 	if err != nil {
 		return err
 	}
@@ -986,7 +1011,6 @@ func (c *LogCommand) handleManual(ctx *bot.InteractionContext, subcommand *disco
 	err = ctx.Respond(discordgo.InteractionResponseChannelMessageWithSource, &discordgo.InteractionResponseData{
 		Embeds: []*discordgo.MessageEmbed{embed},
 	})
-
 	if err != nil {
 		return err
 	}
@@ -1106,55 +1130,6 @@ func (c *LogCommand) resolveVNFromAutocomplete(input string) (*mediadata.VisualN
 	}
 
 	return vn, field, nil
-}
-
-func (c *LogCommand) parseDateOption(
-	ctx *bot.InteractionContext,
-	args []*discordgo.ApplicationCommandInteractionDataOption,
-) (date time.Time, err error) {
-	date = time.Now()
-	enteredDate := discordutil.GetStringOption(args, "date")
-
-	if enteredDate == nil {
-		return
-	}
-
-	userID := discordutil.GetInteractionUser(ctx.Interaction()).ID
-	guildID := ctx.Interaction().GuildID
-
-	user, err := c.userRepo.FindOrCreate(ctx.Context(), userID)
-
-	if err != nil {
-		return
-	}
-
-	timezone := carbon.UTC
-
-	if user != nil && user.Timezone != nil {
-		timezone = *user.Timezone
-	} else if guildID != "" {
-		var guild *guilds.Guild
-		guild, err = c.guildRepo.FindByID(ctx.Context(), guildID)
-
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return
-		}
-
-		if guild != nil && guild.Timezone != nil {
-			timezone = *guild.Timezone
-		}
-	}
-
-	cb := carbon.SetTimezone(timezone).Parse(*enteredDate)
-
-	if err = cb.Error; err != nil {
-		err = fmt.Errorf("%w: %s", errInvalidDateInput, err.Error())
-		return
-	}
-
-	date = cb.ToStdTime()
-
-	return
 }
 
 // Returns difference between two durations
