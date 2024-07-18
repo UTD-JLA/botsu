@@ -195,7 +195,7 @@ func main() {
 	bot := bot.NewBot(logger.WithGroup("bot"), guildRepo)
 	bot.SetNoPanic(config.NoPanic)
 
-	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, mediaSearcher, goalService))
+	bot.AddCommand(commands.LogCommandData, commands.NewLogCommand(activityRepo, userRepo, guildRepo, mediaSearcher, goalService, timeService))
 	bot.AddCommand(commands.ConfigCommandData, commands.NewConfigCommand(userRepo, activityRepo))
 	bot.AddCommand(commands.HistoryCommandData, commands.NewHistoryCommand(activityRepo))
 	bot.AddCommand(commands.LeaderboardCommandData, commands.NewLeaderboardCommand(activityRepo, userRepo, guildRepo))
